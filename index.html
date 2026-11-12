@@ -1,0 +1,749 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>血壓記錄</title>
+<meta name="theme-color" content="#506850">
+<meta name="color-scheme" content="light">
+<meta name="description" content="血壓記錄：上壓、下壓、心跳，每日多時段，日／週／月平均值">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="血壓記錄">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<style>
+:root{
+  --c1:#D3F2DE; --c2:#99C39E; --c3:#506850;
+  --ink:#233127; --mute:#5b6f5f; --card:#F7FCF9; --line:#bfe0c8;
+  --warn-bg:#F5E3B3; --warn-fg:#5b4300; --hi-bg:#F2C2BA; --hi-fg:#6b1f17; --lo-bg:#C9DCEB; --lo-fg:#1e3a52;
+  --pulse:#B4693C;
+  --radius:18px;
+  --sat:env(safe-area-inset-top,0px); --sab:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--c1);color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang HK","PingFang TC","Noto Sans TC","Noto Sans CJK TC","Microsoft JhengHei",system-ui,sans-serif;
+  font-size:16px;line-height:1.45;-webkit-text-size-adjust:100%}
+body{overscroll-behavior-y:none}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none}
+#app{max-width:520px;margin:0 auto;height:100%;display:flex;flex-direction:column;background:var(--c1);position:relative}
+header.top{background:var(--c3);color:#F2FBF5;padding:calc(var(--sat) + 12px) 18px 14px;flex:none}
+header.top h1{margin:0;font-size:20px;letter-spacing:.08em;font-weight:700}
+header.top p{margin:2px 0 0;font-size:13px;opacity:.82}
+main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 14px 24px}
+nav.tabs{flex:none;display:grid;grid-template-columns:repeat(4,1fr);background:var(--card);border-top:1px solid var(--line);padding-bottom:var(--sab)}
+nav.tabs button{padding:9px 0 8px;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:12px;color:var(--mute);font-weight:600}
+nav.tabs button svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+nav.tabs button[aria-selected="true"]{color:var(--c3)}
+nav.tabs button[aria-selected="true"] svg{stroke-width:2.4}
+nav.tabs button[aria-selected="true"]::before{content:"";position:absolute;margin-top:-9px;width:34px;height:3px;border-radius:0 0 3px 3px;background:var(--c3)}
+.card{background:var(--card);border-radius:var(--radius);padding:16px;margin-bottom:12px;box-shadow:0 1px 0 rgba(80,104,80,.12)}
+.card h2{margin:0 0 10px;font-size:15px;color:var(--c3);letter-spacing:.06em}
+.muted{color:var(--mute);font-size:13px}
+.row{display:flex;align-items:center;gap:10px}
+.spread{justify-content:space-between}
+/* date bar */
+.datebar{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.datebar .nav{width:44px;height:44px;border-radius:14px;background:var(--card);font-size:24px;color:var(--c3);font-weight:700;flex:none}
+.datebar .nav:disabled{opacity:.35}
+.datelabel{position:relative;flex:1;height:44px;border-radius:14px;background:var(--c3);color:#F2FBF5;display:flex;align-items:center;justify-content:center;font-weight:700;letter-spacing:.03em;overflow:hidden}
+.datelabel input{position:absolute;inset:0;opacity:0;width:100%;height:100%;font-size:16px}
+.todaybtn{font-size:13px;color:var(--c3);font-weight:700;padding:6px 10px;border-radius:10px;background:var(--c2)}
+/* summary */
+.sum{background:var(--c3);color:#F2FBF5}
+.sum h2{color:#CFE8D6}
+.bigbp{font-size:48px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.bigbp small{font-size:15px;font-weight:600;opacity:.8;margin-left:6px;letter-spacing:0}
+.hr{font-size:20px;font-weight:700;display:flex;align-items:center;gap:6px;font-variant-numeric:tabular-nums}
+.hr svg{width:20px;height:20px;fill:#F2BFA4}
+.badge{display:inline-block;font-size:12px;font-weight:700;padding:3px 10px;border-radius:99px;background:var(--c2);color:#17301c;white-space:nowrap}
+.badge.warn{background:var(--warn-bg);color:var(--warn-fg)}
+.badge.hi{background:var(--hi-bg);color:var(--hi-fg)}
+.badge.lo{background:var(--lo-bg);color:var(--lo-fg)}
+/* slots */
+.slot{width:100%;text-align:left;display:flex;align-items:center;gap:12px;background:var(--card);border-radius:var(--radius);padding:14px 16px;margin-bottom:10px;border:2px solid transparent;box-shadow:0 1px 0 rgba(80,104,80,.12)}
+.slot .ico{flex:none;width:44px;height:44px;border-radius:14px;background:var(--c1);display:grid;place-items:center;color:var(--c3);font-weight:800;font-size:15px}
+.slot.done .ico{background:var(--c3);color:var(--c1)}
+.slot.now{border-color:var(--c2)}
+.slot .t{font-weight:700}
+.slot .v{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--c3)}
+.slot .v small{font-size:13px;font-weight:600;color:var(--mute);margin-left:4px}
+.slot .add{margin-left:auto;font-size:13px;font-weight:700;color:var(--c3);background:var(--c2);padding:6px 12px;border-radius:99px;flex:none}
+.slot .chev{margin-left:auto;color:var(--mute);font-size:22px}
+/* seg */
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;background:var(--c2);border-radius:14px;padding:3px;gap:3px}
+.seg button{padding:8px 0;border-radius:11px;font-weight:700;color:#1f3322}
+.seg button[aria-pressed="true"]{background:var(--c3);color:#F2FBF5}
+/* tiles */
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.tile{background:var(--card);border-radius:var(--radius);padding:12px 14px}
+.tile .k{font-size:12px;color:var(--mute);font-weight:700}
+.tile .n{font-size:26px;font-weight:800;color:var(--c3);font-variant-numeric:tabular-nums;line-height:1.2}
+.tile .s{font-size:12px;color:var(--mute)}
+/* list */
+.plist{list-style:none;margin:0;padding:0}
+.plist li{padding:11px 0;border-top:1px solid var(--line);display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:center}
+.plist li:first-child{border-top:0}
+.plist .lab{font-weight:700}
+.plist .num{font-size:20px;font-weight:800;color:var(--c3);font-variant-numeric:tabular-nums;text-align:right}
+.plist .sub{font-size:12px;color:var(--mute)}
+.plist .pul{color:var(--pulse)}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--mute);margin-top:6px;flex-wrap:wrap}
+.legend i{display:inline-block;width:14px;height:4px;border-radius:2px;vertical-align:middle;margin-right:5px}
+svg.chart{width:100%;height:auto;display:block}
+.empty{text-align:center;color:var(--mute);padding:26px 8px;font-size:14px}
+/* history */
+.dayhead{display:flex;justify-content:space-between;align-items:baseline;margin:14px 4px 6px;font-weight:700;color:var(--c3)}
+.dayhead span{font-size:12px;font-weight:600;color:var(--mute)}
+.hrow{width:100%;text-align:left;display:grid;grid-template-columns:52px 1fr auto;gap:8px;align-items:center;background:var(--card);padding:11px 14px;border-radius:14px;margin-bottom:6px}
+.hrow .sl{font-size:13px;font-weight:700;color:var(--c3)}
+.hrow .bp{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums}
+.hrow .bp small{font-size:12px;color:var(--pulse);font-weight:700;margin-left:6px}
+.hrow .nt{grid-column:2 / 4;font-size:12px;color:var(--mute);margin-top:-4px;word-break:break-all}
+/* buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:11px 16px;border-radius:14px;font-weight:700;background:var(--c2);color:#17301c;min-height:44px}
+.btn.pri{background:var(--c3);color:#F2FBF5}
+.btn.danger{background:var(--hi-bg);color:var(--hi-fg)}
+.btn.ghost{background:transparent;border:2px solid var(--c2);color:var(--c3)}
+.btn:disabled{opacity:.5}
+.btn.block{width:100%}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.btns.three{grid-template-columns:1fr 1fr 1fr}
+.field{display:block;margin-bottom:10px}
+.field>span{display:block;font-size:13px;font-weight:700;color:var(--c3);margin-bottom:4px}
+.field input[type=text],.field input[type=url],.field input[type=password],.field input[type=time],.field input[type=number]{width:100%;padding:11px 12px;border-radius:12px;border:2px solid var(--line);background:#fff;font-size:16px;outline:0}
+.field input:focus{border-color:var(--c3)}
+.switch{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0}
+.switch input{appearance:none;-webkit-appearance:none;width:50px;height:30px;border-radius:99px;background:var(--line);position:relative;flex:none;transition:.2s;border:0;outline:0}
+.switch input::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.switch input:checked{background:var(--c3)}
+.switch input:checked::after{left:23px}
+.status{font-size:13px;margin:8px 0 0;padding:8px 10px;border-radius:10px;background:var(--c1);color:var(--c3);word-break:break-all}
+.status.err{background:var(--hi-bg);color:var(--hi-fg)}
+.help{font-size:12.5px;color:var(--mute);margin:6px 0 0}
+hr.sp{border:0;border-top:1px solid var(--line);margin:14px 0}
+/* modal */
+.ov{position:fixed;inset:0;background:rgba(35,49,39,.5);display:flex;align-items:flex-end;justify-content:center;z-index:50;animation:fade .15s}
+.sheet{width:100%;max-width:520px;background:var(--card);border-radius:24px 24px 0 0;padding:20px 18px calc(18px + var(--sab));max-height:92%;overflow-y:auto;animation:up .2s}
+.sheet h3{margin:0 0 8px;font-size:18px;color:var(--c3)}
+.sheet p{margin:0 0 12px}
+.sheet .err{color:var(--hi-fg);background:var(--hi-bg);border-radius:10px;padding:8px 10px;font-size:14px;margin-bottom:10px}
+.bpgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px}
+.bpgrid .field{margin:0}
+.bpgrid input{text-align:center;font-size:24px !important;font-weight:800;padding:10px 4px !important}
+.stack{display:grid;gap:8px;margin-top:6px}
+.rhead,.rrow{display:grid;grid-template-columns:58px 1fr 1fr 1fr;gap:6px;align-items:center}
+.rhead{font-size:12px;font-weight:700;color:var(--c3);text-align:center;margin-bottom:2px}
+.rrow{margin-bottom:6px}
+.rrow .rl{font-size:13px;font-weight:700;line-height:1.2;color:var(--c3)}
+.rrow .rl.r{color:#3f5a6b}
+.rrow input{width:100%;text-align:center;font-size:20px;font-weight:800;padding:9px 2px;border-radius:12px;border:2px solid var(--line);background:#fff;outline:0}
+.rrow input:focus{border-color:var(--c3)}
+.live{background:var(--c1);border-radius:12px;padding:10px 12px;margin:4px 0 10px;font-size:14px;color:var(--c3)}
+.live b{font-size:20px}
+.arms{font-size:12px;color:var(--mute)}
+@media (min-width:560px){.ov{align-items:center}.sheet{border-radius:24px}}
+@keyframes fade{from{opacity:0}}
+@keyframes up{from{transform:translateY(30px);opacity:.4}}
+.toast{position:fixed;left:50%;bottom:calc(86px + var(--sab));transform:translateX(-50%);background:var(--c3);color:#F2FBF5;padding:10px 18px;border-radius:99px;font-weight:600;font-size:14px;z-index:80;max-width:88%;text-align:center;box-shadow:0 6px 18px rgba(0,0,0,.2);animation:fade .15s}
+.hidden{display:none !important}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="top"><h1 id="ttl">血壓記錄</h1><p id="sub"></p></header>
+  <main id="main" tabindex="-1"></main>
+  <nav class="tabs" id="tabs" role="tablist" aria-label="主選單">
+    <button data-tab="today" role="tab"><svg viewBox="0 0 24 24"><path d="M12 21s-7-4.6-9-9.3C1.8 8.6 3.5 5 7 5c2 0 3.4 1.1 5 3 1.6-1.9 3-3 5-3 3.5 0 5.2 3.6 4 6.7C19 16.4 12 21 12 21z"/></svg>今日</button>
+    <button data-tab="stats" role="tab"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>統計</button>
+    <button data-tab="history" role="tab"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>紀錄</button>
+    <button data-tab="settings" role="tab"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>設定</button>
+  </nav>
+</div>
+<input type="file" id="fileIn" accept=".json,.csv,application/json,text/csv,text/plain" class="hidden">
+<noscript>本 App 需要啟用 JavaScript。</noscript>
+
+<script>
+(function(){
+'use strict';
+
+/* ---------- 基本工具 ---------- */
+const $ = (s, r) => (r || document).querySelector(s);
+const pad = n => String(n).padStart(2, '0');
+const ymd = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+const parseD = s => { const a = s.split('-').map(Number); return new Date(a[0], a[1] - 1, a[2]); };
+const todayStr = () => ymd(new Date());
+const addDays = (s, n) => { const d = parseD(s); d.setDate(d.getDate() + n); return ymd(d); };
+const WD = ['日', '一', '二', '三', '四', '五', '六'];
+const fmtLong = s => { const d = parseD(s); return d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日（' + WD[d.getDay()] + '）'; };
+const fmtMD = s => { const d = parseD(s); return (d.getMonth() + 1) + '月' + d.getDate() + '日'; };
+const weekStart = s => { const d = parseD(s); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return ymd(d); };
+const nowHM = () => { const d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmtDT = v => { if (!v) return '—'; const d = new Date(v); if (isNaN(d)) return '—'; return d.getFullYear() + '/' + pad(d.getMonth() + 1) + '/' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+
+const mem = {};
+function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return mem[k] == null ? null : mem[k]; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { mem[k] = v; if (!lsSet.warned) { lsSet.warned = true; setTimeout(() => toast('瀏覽器無法儲存資料，請先匯出備份'), 300); } } }
+function lsDel(k) { try { localStorage.removeItem(k); } catch (e) { delete mem[k]; } }
+
+/* ---------- 資料 ---------- */
+const SLOTS = {
+  m: { name: '早上', hint: '起床後・早餐前', def: '07:30', ab: '早' },
+  a: { name: '下午', hint: '午後', def: '14:30', ab: '午' },
+  e: { name: '晚上', hint: '睡前', def: '21:30', ab: '晚' }
+};
+const SLOT_ORDER = ['m', 'a', 'e'];
+const KEY_DATA = 'bp.v1.data', KEY_SYNC = 'bp.v1.sync', KEY_PREV = 'bp.v1.prev';
+
+let db = { settings: { slots: 3 }, records: {}, modifiedAt: 0 };
+let sync = { url: '', token: '', auto: false, lastSyncedAt: null, pending: false, deviceId: '', lastOk: 0 };
+
+function loadAll() {
+  try { const j = JSON.parse(lsGet(KEY_DATA) || 'null'); if (j && j.records) { db.records = j.records; db.settings = Object.assign({ slots: 3 }, j.settings || {}); db.modifiedAt = j.modifiedAt || 0; } } catch (e) {}
+  try { const j = JSON.parse(lsGet(KEY_SYNC) || 'null'); if (j) sync = Object.assign(sync, j); } catch (e) {}
+  if (!sync.deviceId) { sync.deviceId = 'd' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); saveSync(); }
+}
+function saveDb() { lsSet(KEY_DATA, JSON.stringify(db)); }
+function saveSync() { lsSet(KEY_SYNC, JSON.stringify(sync)); }
+function touch() { db.modifiedAt = Date.now(); saveDb(); scheduleAuto(); }
+const rkey = (d, s) => d + '|' + s;
+const allRecords = () => Object.values(db.records);
+const activeSlots = () => db.settings.slots === 2 ? ['m', 'e'] : ['m', 'a', 'e'];
+function slotsForDate(d) { const set = new Set(activeSlots()); SLOT_ORDER.forEach(s => { if (db.records[rkey(d, s)]) set.add(s); }); return SLOT_ORDER.filter(s => set.has(s)); }
+
+/* ---------- 計算 ---------- */
+function avgOf(list, k) { const v = list.map(r => r[k]).filter(x => typeof x === 'number' && !isNaN(x)); return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : null; }
+function summarize(list) { return { n: list.length, sys: avgOf(list, 'sys'), dia: avgOf(list, 'dia'), pulse: avgOf(list, 'pulse') }; }
+function classify(sys, dia) {
+  if (sys == null || dia == null) return null;
+  if (sys >= 140 || dia >= 90) return { t: '偏高', c: 'hi' };
+  if (sys >= 130 || dia >= 85) return { t: '正常偏高', c: 'warn' };
+  if (sys < 90 || dia < 60) return { t: '偏低', c: 'lo' };
+  return { t: '正常', c: '' };
+}
+const ARMS = [['L', 1, '左臂<br>第1次'], ['L', 2, '左臂<br>第2次'], ['R', 1, '右臂<br>第1次'], ['R', 2, '右臂<br>第2次']];
+function armAvg(rd, a) { const l = (rd || []).filter(x => x.a === a); if (!l.length) return null; return { sys: avgOf(l, 'sys'), dia: avgOf(l, 'dia'), pulse: avgOf(l, 'pulse'), n: l.length }; }
+function armLine(r) {
+  if (!r || !r.rd || !r.rd.length) return '';
+  const L = armAvg(r.rd, 'L'), R = armAvg(r.rd, 'R'), parts = [];
+  if (L) parts.push('左 ' + L.sys + '/' + L.dia); if (R) parts.push('右 ' + R.sys + '/' + R.dia);
+  if (L && R) parts.push('左右差 ' + Math.abs(L.sys - R.sys));
+  return parts.join(' ・ ') + ' ・ 量度 ' + r.rd.length + ' 次';
+}
+const badge = (sys, dia) => { const c = classify(sys, dia); return c ? '<span class="badge ' + c.c + '">' + c.t + '</span>' : ''; };
+function periodKey(mode, d) { return mode === 'day' ? d : mode === 'week' ? weekStart(d) : d.slice(0, 7); }
+function periodLabel(mode, k) {
+  if (mode === 'day') return fmtLong(k);
+  if (mode === 'week') return fmtMD(k) + ' – ' + fmtMD(addDays(k, 6));
+  const p = k.split('-'); return p[0] + '年' + Number(p[1]) + '月';
+}
+function periodShort(mode, k) {
+  if (mode === 'month') return Number(k.slice(5)) + '月';
+  const d = parseD(k); return (d.getMonth() + 1) + '/' + d.getDate();
+}
+function groupBy(mode) {
+  const map = {};
+  allRecords().forEach(r => { const k = periodKey(mode, r.date); (map[k] = map[k] || []).push(r); });
+  return Object.keys(map).sort().map(k => Object.assign({ key: k }, summarize(map[k]), { days: new Set(map[k].map(r => r.date)).size }));
+}
+function recordsIn(mode, key) { return allRecords().filter(r => periodKey(mode, r.date) === key); }
+
+/* ---------- UI 狀態 ---------- */
+const ui = { tab: 'today', date: todayStr(), mode: 'day' };
+const main = $('#main');
+
+function toast(msg, ms) {
+  const old = $('.toast'); if (old) old.remove();
+  const t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status'); t.textContent = msg;
+  document.body.appendChild(t); setTimeout(() => t.remove(), ms || 2400);
+}
+
+/* ---------- App 內彈窗（取代系統 confirm / alert） ---------- */
+function modal(o) {
+  return new Promise(resolve => {
+    const ov = document.createElement('div'); ov.className = 'ov'; ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-modal', 'true');
+    const acts = (o.actions || [{ id: 'ok', label: '好', cls: 'pri' }]);
+    ov.innerHTML = '<div class="sheet"><h3>' + esc(o.title || '') + '</h3><div class="mbody">' + (o.html || '') + '</div><div class="stack mact">' +
+      acts.map(a => '<button class="btn ' + (a.cls || '') + ' block" data-mid="' + a.id + '">' + esc(a.label) + '</button>').join('') + '</div></div>';
+    document.body.appendChild(ov);
+    const sheet = $('.sheet', ov);
+    const close = (id, data) => { document.removeEventListener('keydown', onKey, true); ov.remove(); resolve({ id: id, data: data }); };
+    const trigger = id => {
+      if (o.validate && id === (o.validateOn || 'save')) { const r = o.validate(sheet); if (!r) return; close(id, r); } else close(id);
+    };
+    function onKey(e) { if (e.key === 'Escape') { e.stopPropagation(); close(o.cancelId || 'cancel'); } else if (e.key === 'Enter' && o.enterId && e.target.tagName === 'INPUT') { e.preventDefault(); trigger(o.enterId); } }
+    document.addEventListener('keydown', onKey, true);
+    ov.addEventListener('click', e => {
+      const b = e.target.closest('[data-mid]');
+      if (b) { trigger(b.dataset.mid); return; }
+      if (e.target === ov && !o.noBackdrop) close(o.cancelId || 'cancel');
+    });
+    if (o.onOpen) o.onOpen(sheet);
+  });
+}
+const confirmBox = (title, html, okLabel, danger) => modal({ title: title, html: html, cancelId: 'cancel', actions: [{ id: 'ok', label: okLabel || '確定', cls: danger ? 'danger' : 'pri' }, { id: 'cancel', label: '取消', cls: 'ghost' }] }).then(r => r.id === 'ok');
+const notice = (title, html) => modal({ title: title, html: html, actions: [{ id: 'ok', label: '好', cls: 'pri' }] });
+
+/* ---------- 渲染 ---------- */
+function setHeader(t, s) { $('#ttl').textContent = t; $('#sub').textContent = s || ''; }
+function render() {
+  document.querySelectorAll('#tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === ui.tab ? 'true' : 'false'));
+  ({ today: viewToday, stats: viewStats, history: viewHistory, settings: viewSettings })[ui.tab]();
+}
+function keepScroll(fn) { const y = main.scrollTop; fn(); main.scrollTop = y; }
+
+function viewToday() {
+  const d = ui.date, isToday = d === todayStr();
+  setHeader('血壓記錄', isToday ? '今日 · ' + fmtLong(d) : fmtLong(d));
+  const slots = slotsForDate(d);
+  const dayRecs = slots.map(s => db.records[rkey(d, s)]).filter(Boolean);
+  const sm = summarize(dayRecs);
+  const h = new Date().getHours(), nowSlot = h < 12 ? 'm' : h < 18 ? 'a' : 'e';
+  let html = '<div class="datebar"><button class="nav" data-act="prevDay" aria-label="前一日">‹</button>' +
+    '<label class="datelabel"><span id="dl">' + esc(fmtLong(d)) + '</span><input type="date" id="datePick" value="' + d + '" max="' + todayStr() + '" aria-label="選擇日期"></label>' +
+    '<button class="nav" data-act="nextDay" aria-label="後一日"' + (isToday ? ' disabled' : '') + '>›</button></div>';
+  if (!isToday) html += '<div style="text-align:right;margin:-4px 0 10px"><button class="todaybtn" data-act="goToday">回到今日</button></div>';
+  html += '<section class="card sum" id="daySum"><h2>當日平均</h2>';
+  if (sm.n) {
+    html += '<div class="row spread" style="align-items:flex-end"><div class="bigbp"><span id="avgSys">' + sm.sys + '</span>/<span id="avgDia">' + sm.dia + '</span><small>mmHg</small></div>' +
+      '<div class="hr"><svg viewBox="0 0 24 24"><path d="M12 21s-7-4.6-9-9.3C1.8 8.6 3.5 5 7 5c2 0 3.4 1.1 5 3 1.6-1.9 3-3 5-3 3.5 0 5.2 3.6 4 6.7C19 16.4 12 21 12 21z"/></svg><span id="avgHr">' + (sm.pulse == null ? '—' : sm.pulse) + '</span><small style="font-size:12px;opacity:.8">次/分</small></div></div>' +
+      '<div class="row spread" style="margin-top:12px"><span style="font-size:13px;opacity:.85">已記錄 ' + sm.n + ' / ' + activeSlots().length + ' 個時段</span>' + badge(sm.sys, sm.dia).replace('badge', 'badge') + '</div>';
+  } else html += '<div class="bigbp" style="opacity:.55">—<small>尚未記錄</small></div>';
+  html += '</section>';
+  slots.forEach(s => {
+    const r = db.records[rkey(d, s)], S = SLOTS[s];
+    if (r) {
+      html += '<button class="slot done" data-act="edit" data-date="' + d + '" data-slot="' + s + '"><span class="ico">' + S.ab + '</span><span><div class="t">' + S.name + ' <span class="muted">' + esc(r.time || '') + '</span></div>' +
+        '<div class="v">' + r.sys + '/' + r.dia + '<small>' + (r.pulse != null ? '心跳 ' + r.pulse : '') + '</small></div>' + (armLine(r) ? '<div class="arms">' + esc(armLine(r)) + '</div>' : '') + (r.note ? '<div class="muted">' + esc(r.note) + '</div>' : '') + '</span><span class="chev">›</span></button>';
+    } else {
+      html += '<button class="slot' + (isToday && s === nowSlot ? ' now' : '') + '" data-act="edit" data-date="' + d + '" data-slot="' + s + '"><span class="ico">' + S.ab + '</span><span><div class="t">' + S.name + '</div><div class="muted">' + S.hint + '・左右臂各量 2 次</div></span><span class="add">＋ 記錄</span></button>';
+    }
+  });
+  main.innerHTML = html;
+}
+
+function chartSVG(pts) {
+  if (!pts.length) return '<div class="empty">暫時沒有資料</div>';
+  const W = 340, H = 190, L = 34, R = 10, T = 12, B = 26;
+  const vals = []; pts.forEach(p => { [p.sys, p.dia, p.pulse].forEach(v => { if (v != null) vals.push(v); }); });
+  let lo = Math.floor((Math.min.apply(null, vals) - 8) / 10) * 10, hi = Math.ceil((Math.max.apply(null, vals) + 8) / 10) * 10;
+  if (hi - lo < 40) hi = lo + 40;
+  const x = i => pts.length === 1 ? (L + (W - L - R) / 2) : L + (W - L - R) * i / (pts.length - 1);
+  const y = v => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
+  let g = '';
+  const step = (hi - lo) <= 60 ? 10 : (hi - lo) <= 120 ? 20 : 40;
+  for (let v = lo; v <= hi; v += step) g += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="#bfe0c8" stroke-width="1"/><text x="' + (L - 6) + '" y="' + (y(v) + 4) + '" text-anchor="end" font-size="10" fill="#5b6f5f">' + v + '</text>';
+  const line = (k, col, dash, w) => {
+    const seg = []; let cur = [];
+    pts.forEach((p, i) => { if (p[k] == null) { if (cur.length) seg.push(cur); cur = []; } else cur.push([x(i), y(p[k])]); });
+    if (cur.length) seg.push(cur);
+    let s = '';
+    seg.forEach(a => { if (a.length > 1) s += '<polyline fill="none" stroke="' + col + '" stroke-width="' + w + '" stroke-linejoin="round" stroke-linecap="round"' + (dash ? ' stroke-dasharray="' + dash + '"' : '') + ' points="' + a.map(q => q[0].toFixed(1) + ',' + q[1].toFixed(1)).join(' ') + '"/>'; });
+    pts.forEach((p, i) => { if (p[k] != null) s += '<circle cx="' + x(i).toFixed(1) + '" cy="' + y(p[k]).toFixed(1) + '" r="3.4" fill="' + col + '" stroke="#F7FCF9" stroke-width="1.5"/>'; });
+    return s;
+  };
+  let labs = ''; const every = Math.ceil(pts.length / 7);
+  pts.forEach((p, i) => { if (i % every === 0 || i === pts.length - 1) labs += '<text x="' + x(i).toFixed(1) + '" y="' + (H - 8) + '" text-anchor="middle" font-size="10" fill="#5b6f5f">' + esc(p.lab) + '</text>'; });
+  return '<svg class="chart" id="chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="血壓與心跳走勢圖">' + g + labs + line('pulse', '#B4693C', '4 4', 2) + line('dia', '#99C39E', '', 3) + line('sys', '#506850', '', 3) + '</svg>' +
+    '<div class="legend"><span><i style="background:#506850"></i>上壓</span><span><i style="background:#99C39E"></i>下壓</span><span><i style="background:#B4693C"></i>心跳</span></div>';
+}
+
+function viewStats() {
+  setHeader('統計', '日、週、月平均值');
+  const mode = ui.mode, groups = groupBy(mode);
+  const t = todayStr(), wk = weekStart(t), mo = t.slice(0, 7);
+  const wSum = summarize(recordsIn('week', wk)), mSum = summarize(recordsIn('month', mo));
+  const tile = (k, s, sub) => '<div class="tile"><div class="k">' + k + '</div><div class="n">' + (s.n ? s.sys + '/' + s.dia : '—') + '</div><div class="s">' + (s.n ? '心跳 ' + (s.pulse == null ? '—' : s.pulse) + ' · ' + s.n + ' 個時段' : '暫時沒有記錄') + '</div></div>';
+  const lim = mode === 'day' ? 30 : mode === 'week' ? 26 : 24, chartN = mode === 'day' ? 14 : 12;
+  const shown = groups.slice(-lim), chartPts = groups.slice(-chartN).map(g => Object.assign({ lab: periodShort(mode, g.key) }, g));
+  let html = '<div class="tiles" id="tiles">' + tile('本週平均', wSum) + tile('本月平均', mSum) + '</div>';
+  html += '<div class="seg" id="modeSeg" style="margin-bottom:12px">' + [['day', '每日'], ['week', '每週'], ['month', '每月']].map(a => '<button data-act="mode" data-mode="' + a[0] + '" aria-pressed="' + (mode === a[0]) + '">' + a[1] + '</button>').join('') + '</div>';
+  html += '<section class="card"><h2>走勢（' + (mode === 'day' ? '每日' : mode === 'week' ? '每週' : '每月') + '平均）</h2>' + chartSVG(chartPts) + '</section>';
+  html += '<section class="card"><h2>' + (mode === 'day' ? '每日' : mode === 'week' ? '每週（週一至週日）' : '每月') + '平均值</h2>';
+  if (!shown.length) html += '<div class="empty">還沒有記錄，先到「今日」新增一筆吧。</div>';
+  else html += '<ul class="plist" id="plist">' + shown.slice().reverse().map(g =>
+    '<li><div><div class="lab">' + esc(periodLabel(mode, g.key)) + '</div><div class="sub">' + g.n + ' 個時段記錄' + (mode !== 'day' ? '・' + g.days + ' 天有記錄' : '') + ' ・ ' + badge(g.sys, g.dia) + '</div></div>' +
+    '<div class="num">' + g.sys + '/' + g.dia + '<div class="sub pul">心跳 ' + (g.pulse == null ? '—' : g.pulse) + '</div></div></li>').join('') + '</ul>';
+  html += '<p class="help">每個時段先把左右臂共 4 次量度平均，日／週／月平均再以各時段的平均值計算（四捨五入至整數）。分類只作參考，並非診斷。</p></section>';
+  main.innerHTML = html;
+}
+
+function viewHistory() {
+  setHeader('紀錄', allRecords().length + ' 筆記錄');
+  const recs = allRecords();
+  if (!recs.length) { main.innerHTML = '<div class="empty">還沒有任何記錄。</div>'; return; }
+  const byDate = {}; recs.forEach(r => (byDate[r.date] = byDate[r.date] || []).push(r));
+  const dates = Object.keys(byDate).sort().reverse();
+  let html = '<div id="hist">';
+  dates.forEach(d => {
+    const list = byDate[d].sort((a, b) => SLOT_ORDER.indexOf(a.slot) - SLOT_ORDER.indexOf(b.slot)), sm = summarize(list);
+    html += '<div class="dayhead"><div>' + esc(fmtLong(d)) + '</div><span>平均 ' + sm.sys + '/' + sm.dia + (sm.pulse != null ? ' · ' + sm.pulse : '') + '</span></div>';
+    list.forEach(r => {
+      html += '<button class="hrow" data-act="edit" data-date="' + r.date + '" data-slot="' + r.slot + '"><span class="sl">' + SLOTS[r.slot].name + '</span><span class="bp">' + r.sys + '/' + r.dia + (r.pulse != null ? '<small>♥ ' + r.pulse + '</small>' : '') + '</span>' + badge(r.sys, r.dia) + ((armLine(r) || r.note) ? '<span class="nt">' + esc((armLine(r) ? armLine(r) + (r.note ? '・' : '') : '') + (r.note || '')) + '</span>' : '') + '</button>';
+    });
+  });
+  main.innerHTML = html + '</div>';
+}
+
+/* ---------- 新增 / 編輯 ---------- */
+function readRows(sh, strict) {
+  const rd = []; let error = null;
+  ARMS.forEach((A, k) => {
+    const g = id => { const t = $(id, sh).value.trim(); return t === '' ? null : Number(t); };
+    const sys = g('#r' + k + 's'), dia = g('#r' + k + 'd'), hr = g('#r' + k + 'h'), name = A[2].replace('<br>', '');
+    if (sys == null && dia == null && hr == null) return;
+    if (strict) {
+      if (error) return;
+      if (sys == null || dia == null) { error = name + '：請輸入上壓和下壓（或把整行留空）。'; return; }
+      if (!Number.isInteger(sys) || sys < 50 || sys > 260) { error = name + '：上壓應在 50–260 之間。'; return; }
+      if (!Number.isInteger(dia) || dia < 30 || dia > 160) { error = name + '：下壓應在 30–160 之間。'; return; }
+      if (sys <= dia) { error = name + '：上壓應高於下壓，請檢查數字。'; return; }
+      if (hr != null && (!Number.isInteger(hr) || hr < 30 || hr > 220)) { error = name + '：心跳應在 30–220 之間，或留空。'; return; }
+    } else if (sys == null || dia == null || isNaN(sys) || isNaN(dia)) return;
+    rd.push({ a: A[0], i: A[1], sys: sys, dia: dia, pulse: hr == null || isNaN(hr) ? null : hr });
+  });
+  return { rd: rd, error: error };
+}
+async function openEntry(date, slot) {
+  const ex = db.records[rkey(date, slot)], S = SLOTS[slot];
+  const defTime = ex && ex.time ? ex.time : (date === todayStr() ? nowHM() : S.def);
+  const rdMap = {}; (ex && ex.rd || []).forEach(x => { rdMap[x.a + x.i] = x; });
+  const legacy = ex && !(ex.rd && ex.rd.length);
+  if (legacy) rdMap['L1'] = { sys: ex.sys, dia: ex.dia, pulse: ex.pulse };
+  const val = v => v == null ? '' : v;
+  let rows = '';
+  ARMS.forEach((A, k) => {
+    const x = rdMap[A[0] + A[1]] || {}, nm = A[2].replace('<br>', '');
+    rows += '<div class="rrow"><div class="rl ' + (A[0] === 'R' ? 'r' : '') + '">' + A[2] + '</div>' +
+      '<input type="number" inputmode="numeric" id="r' + k + 's" placeholder="120" aria-label="' + nm + ' 上壓" value="' + val(x.sys) + '">' +
+      '<input type="number" inputmode="numeric" id="r' + k + 'd" placeholder="80" aria-label="' + nm + ' 下壓" value="' + val(x.dia) + '">' +
+      '<input type="number" inputmode="numeric" id="r' + k + 'h" placeholder="70" aria-label="' + nm + ' 心跳" value="' + val(x.pulse) + '"></div>';
+  });
+  const html = '<p class="muted" style="margin-bottom:10px">' + esc(fmtLong(date)) + ' · ' + S.name + '<br>左右臂各量 2 次，系統會計算這個時段的平均值。' + (legacy ? '<br><b>這是舊記錄（只有一組平均值），已填入「左臂第1次」，儲存後會以新輸入為準。</b>' : '') + '</p><div id="err" class="err hidden"></div>' +
+    '<div class="rhead"><span></span><span>上壓</span><span>下壓</span><span>心跳</span></div>' + rows +
+    '<div class="live" id="live">時段平均：—</div>' +
+    '<label class="field"><span>量度時間</span><input type="time" id="fTime" value="' + defTime + '"></label>' +
+    '<label class="field"><span>備註（選填）</span><input type="text" id="fNote" maxlength="60" placeholder="例如：服藥後、運動後" value="' + esc(ex ? ex.note : '') + '"></label>';
+  const actions = [{ id: 'save', label: ex ? '儲存修改' : '儲存', cls: 'pri' }];
+  if (ex) actions.push({ id: 'del', label: '刪除這筆記錄', cls: 'danger' });
+  actions.push({ id: 'cancel', label: '取消', cls: 'ghost' });
+  const r = await modal({
+    title: ex ? '修改記錄' : '新增記錄', html: html, actions: actions, enterId: 'save', cancelId: 'cancel',
+    onOpen: sh => {
+      const upd = () => { const g = readRows(sh, false), box = $('#live', sh); if (!g.rd.length) { box.textContent = '時段平均：—'; return; }
+        const sm = summarize(g.rd), L = armAvg(g.rd, 'L'), R = armAvg(g.rd, 'R');
+        box.innerHTML = '時段平均 <b>' + sm.sys + '/' + sm.dia + '</b>' + (sm.pulse != null ? '　心跳 <b>' + sm.pulse + '</b>' : '') + '（' + g.rd.length + '/4 次）' +
+          (L || R ? '<div class="arms" style="color:inherit;opacity:.85;margin-top:2px">' + (L ? '左 ' + L.sys + '/' + L.dia : '') + (L && R ? '　' : '') + (R ? '右 ' + R.sys + '/' + R.dia : '') + (L && R ? '　左右差 ' + Math.abs(L.sys - R.sys) : '') + '</div>' : ''); };
+      sh.addEventListener('input', upd); upd();
+      const f = $('#r0s', sh); if (f && !ex) f.focus({ preventScroll: true });
+    },
+    validate: sh => {
+      const err = $('#err', sh), show = m => { err.textContent = m; err.classList.remove('hidden'); return false; };
+      const g = readRows(sh, true); if (g.error) return show(g.error);
+      if (!g.rd.length) return show('請至少輸入一次量度（左臂或右臂）。');
+      const sm = summarize(g.rd);
+      return { sys: sm.sys, dia: sm.dia, pulse: sm.pulse, rd: g.rd, time: $('#fTime', sh).value || '', note: $('#fNote', sh).value.trim() };
+    }
+  });
+  if (r.id === 'save') {
+    db.records[rkey(date, slot)] = { date: date, slot: slot, sys: r.data.sys, dia: r.data.dia, pulse: r.data.pulse, rd: r.data.rd, time: r.data.time, note: r.data.note, u: Date.now() };
+    touch(); render(); toast('已儲存');
+  } else if (r.id === 'del') {
+    const ok = await confirmBox('刪除這筆記錄？', '<p>' + esc(fmtLong(date)) + ' ' + S.name + '：平均 <b>' + ex.sys + '/' + ex.dia + '</b>' + (ex.pulse != null ? '，心跳 ' + ex.pulse : '') + '（包括左右臂全部量度）。<br>刪除後無法復原。</p>', '刪除', true);
+    if (ok) { delete db.records[rkey(date, slot)]; touch(); render(); toast('已刪除'); }
+  }
+}
+
+/* ---------- 匯出 / 匯入 ---------- */
+function sortedRecords() { return allRecords().slice().sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : SLOT_ORDER.indexOf(a.slot) - SLOT_ORDER.indexOf(b.slot)); }
+function buildPayload() {
+  return { app: 'bp-tracker', version: 1, exportedAt: new Date().toISOString(), settings: { slots: db.settings.slots },
+    records: sortedRecords().map(r => { const o = { date: r.date, slot: r.slot, sys: r.sys, dia: r.dia, pulse: r.pulse, time: r.time || '', note: r.note || '' }; if (r.rd && r.rd.length) o.readings = r.rd.map(x => ({ arm: x.a === 'L' ? 'left' : 'right', n: x.i, sys: x.sys, dia: x.dia, pulse: x.pulse })); return o; }) };
+}
+function normalizeRecords(arr) {
+  const out = []; let skipped = 0;
+  (Array.isArray(arr) ? arr : []).forEach(x => {
+    const date = String(x && x.date || ''), slot = String(x && x.slot || ''), sys = Number(x && x.sys), dia = Number(x && x.dia);
+    const pr = x && x.pulse !== '' && x.pulse != null ? Number(x.pulse) : null;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || isNaN(parseD(date)) || !SLOTS[slot] || !isFinite(sys) || !isFinite(dia) || sys <= 0 || dia <= 0 || (pr != null && !isFinite(pr))) { skipped++; return; }
+    const rd = [];
+    (Array.isArray(x.readings) ? x.readings : (Array.isArray(x.rd) ? x.rd : [])).forEach(q => {
+      const a = q.arm === 'left' || q.a === 'L' ? 'L' : q.arm === 'right' || q.a === 'R' ? 'R' : null, i = Number(q.n != null ? q.n : q.i), qs = Number(q.sys), qd = Number(q.dia), qp = q.pulse === '' || q.pulse == null ? null : Number(q.pulse);
+      if (a && (i === 1 || i === 2) && isFinite(qs) && isFinite(qd) && qs > 0 && qd > 0) rd.push({ a: a, i: i, sys: Math.round(qs), dia: Math.round(qd), pulse: qp != null && isFinite(qp) ? Math.round(qp) : null });
+    });
+    out.push({ rd: rd, date: date, slot: slot, sys: Math.round(sys), dia: Math.round(dia), pulse: pr == null ? null : Math.round(pr), time: /^\d{2}:\d{2}$/.test(x.time || '') ? x.time : '', note: String(x.note || '').slice(0, 60), u: Date.now() });
+  });
+  return { list: out, skipped: skipped };
+}
+function csvEscape(s) { s = String(s == null ? '' : s); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+function buildCSV() {
+  const rows = [['日期', '時段', '時間', '上壓', '下壓', '心跳', '備註', '左臂1', '左臂2', '右臂1', '右臂2']];
+  sortedRecords().forEach(r => rows.push([r.date, SLOTS[r.slot].name, r.time || '', r.sys, r.dia, r.pulse == null ? '' : r.pulse, r.note || ''].concat(ARMS.map(A => { const x = (r.rd || []).find(q => q.a === A[0] && q.i === A[1]); return x ? x.sys + '/' + x.dia + '/' + (x.pulse == null ? '' : x.pulse) : ''; }))));
+  return '﻿' + rows.map(a => a.map(csvEscape).join(',')).join('\r\n');
+}
+function parseCSV(text) {
+  text = text.replace(/^﻿/, ''); const rows = []; let row = [], f = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+    else if (c === '"') q = true;
+    else if (c === ',') { row.push(f); f = ''; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(f); f = ''; if (row.length > 1 || row[0] !== '') rows.push(row); row = []; }
+    else f += c;
+  }
+  row.push(f); if (row.length > 1 || row[0] !== '') rows.push(row);
+  return rows;
+}
+function csvToRecords(text) {
+  const rows = parseCSV(text), nameToSlot = {}; SLOT_ORDER.forEach(s => nameToSlot[SLOTS[s].name] = s);
+  return rows.slice(1).map(a => ({ date: (a[0] || '').trim(), slot: nameToSlot[(a[1] || '').trim()] || (a[1] || '').trim(), time: (a[2] || '').trim(), sys: a[3], dia: a[4], pulse: a[5], note: a[6], readings: ARMS.map((A, k) => { const t = (a[7 + k] || '').split('/'); return t.length >= 2 && t[0] !== '' ? { arm: A[0] === 'L' ? 'left' : 'right', n: A[1], sys: t[0], dia: t[1], pulse: t[2] || '' } : null; }).filter(Boolean) }));
+}
+async function saveFile(name, mime, text) {
+  const blob = new Blob([text], { type: mime });
+  const mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  if (mobile && navigator.canShare && navigator.share) {
+    try { const f = new File([blob], name, { type: mime }); if (navigator.canShare({ files: [f] })) { await navigator.share({ files: [f], title: name }); return 'shared'; } }
+    catch (e) { if (e && e.name === 'AbortError') return 'cancel'; }
+  }
+  const url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click();
+  setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1500); return 'download';
+}
+const stamp = () => { const d = new Date(); return d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '-' + pad(d.getHours()) + pad(d.getMinutes()); };
+async function exportJSON() { if (!allRecords().length) return toast('目前沒有資料可匯出'); const r = await saveFile('血壓記錄-' + stamp() + '.json', 'application/json', JSON.stringify(buildPayload(), null, 2)); if (r !== 'cancel') toast('已匯出 JSON 備份'); }
+async function exportCSV() { if (!allRecords().length) return toast('目前沒有資料可匯出'); const r = await saveFile('血壓記錄-' + stamp() + '.csv', 'text/csv;charset=utf-8', buildCSV()); if (r !== 'cancel') toast('已匯出 CSV'); }
+
+function snapshotPrev(reason) { lsSet(KEY_PREV, JSON.stringify({ at: Date.now(), reason: reason, settings: db.settings, records: db.records })); }
+function applyRecords(list, mode, slots) {
+  snapshotPrev(mode === 'replace' ? '取代前' : '合併前');
+  if (mode === 'replace') db.records = {};
+  list.forEach(r => { db.records[rkey(r.date, r.slot)] = r; });
+  if (slots === 2 || slots === 3) db.settings.slots = slots;
+}
+async function handleFile(file) {
+  if (!file) return;
+  let text; try { text = await file.text(); } catch (e) { return notice('讀取失敗', '<p>無法讀取這個檔案。</p>'); }
+  let list, skipped = 0, slots = null;
+  try {
+    if (/\.csv$/i.test(file.name) || (text.replace(/^﻿/, '')[0] !== '{' && text.replace(/^﻿/, '')[0] !== '[')) { const n = normalizeRecords(csvToRecords(text)); list = n.list; skipped = n.skipped; }
+    else { const j = JSON.parse(text); const n = normalizeRecords(Array.isArray(j) ? j : j.records); list = n.list; skipped = n.skipped; slots = j && j.settings ? j.settings.slots : null; }
+  } catch (e) { return notice('匯入失敗', '<p>檔案格式不正確，請選擇由本 App 匯出的 JSON 或 CSV。</p>'); }
+  if (!list.length) return notice('沒有可匯入的記錄', '<p>檔案內找不到有效的血壓記錄' + (skipped ? '（略過 ' + skipped + ' 筆格式不正確）' : '') + '。</p>');
+  const r = await modal({
+    title: '匯入 ' + list.length + ' 筆記錄', cancelId: 'cancel',
+    html: '<p>本機目前有 <b>' + allRecords().length + '</b> 筆記錄。' + (skipped ? '<br><span class="muted">另有 ' + skipped + ' 筆格式不正確，已略過。</span>' : '') + '</p><p class="muted">合併：保留本機記錄，同一日期同一時段以匯入的為準。<br>取代：先清空本機，再用匯入的資料。</p>',
+    actions: [{ id: 'merge', label: '合併', cls: 'pri' }, { id: 'replace', label: '取代全部', cls: 'danger' }, { id: 'cancel', label: '取消', cls: 'ghost' }]
+  });
+  if (r.id === 'cancel') return;
+  applyRecords(list, r.id, slots); touch(); render(); toast('已匯入 ' + list.length + ' 筆記錄');
+}
+
+/* ---------- Google Drive 同步 ---------- */
+let syncBusy = false, autoTimer = null, autoPaused = false, conflictOpen = false, statusMsg = '', statusErr = false;
+const syncReady = () => !!(sync.url && sync.token);
+function setStatus(msg, err) { statusMsg = msg; statusErr = !!err; const el = $('#syncStatus'); if (el) { el.textContent = msg; el.classList.toggle('err', !!err); } }
+function baseStatus() {
+  if (!syncReady()) return '尚未設定。';
+  const parts = [];
+  parts.push(sync.lastOk ? '上次同步：' + fmtDT(sync.lastOk) : '尚未同步過');
+  if (sync.pending) parts.push(autoPaused ? '有改動待處理（自動上傳已暫停）' : '有改動等待上傳');
+  return parts.join('；');
+}
+function GasError(code, msg) { this.code = code; this.message = msg; }
+function errText(e) {
+  if (e instanceof GasError) {
+    return ({ auth: '密碼不正確，請檢查與 Code.gs 第一行的 TOKEN 是否一致。', token_not_set: 'Code.gs 的 TOKEN 還沒有改成你自己的密碼。', bad_response: '網址不正確，或 Apps Script 部署時沒有把「誰可以存取」設為「任何人」。', timeout: '連線逾時，請稍後再試。' })[e.code] || ('伺服器回報：' + (e.message || e.code));
+  }
+  return '無法連線（請檢查網絡與網址）。';
+}
+async function callGas(action, extra) {
+  const ctrl = new AbortController(), to = setTimeout(() => ctrl.abort(), 30000);
+  try {
+    const res = await fetch(sync.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ action: action, token: sync.token, deviceId: sync.deviceId }, extra || {})), signal: ctrl.signal, redirect: 'follow' });
+    const text = await res.text(); let j;
+    try { j = JSON.parse(text); } catch (e) { throw new GasError('bad_response'); }
+    return j;
+  } catch (e) {
+    if (e instanceof GasError) throw e;
+    if (e && e.name === 'AbortError') throw new GasError('timeout');
+    throw e;
+  } finally { clearTimeout(to); }
+}
+function needSetup() { if (!syncReady()) { toast('請先填寫 Apps Script 網址和密碼'); return true; } return false; }
+
+async function syncTest() {
+  if (needSetup() || syncBusy) return; syncBusy = true; setStatus('測試連線中…');
+  try {
+    const r = await callGas('ping');
+    if (!r.ok) throw new GasError(r.error, r.message);
+    setStatus(r.exists ? '連線成功 ✓ 雲端已有資料：' + r.count + ' 筆（更新於 ' + fmtDT(r.updatedAt) + '）' : '連線成功 ✓ 雲端暫時沒有資料', false);
+  } catch (e) { setStatus(errText(e), true); } finally { syncBusy = false; }
+}
+
+function conflictModal(meta) {
+  const localN = allRecords().length;
+  return modal({
+    title: '雲端有另一部裝置的較新資料', cancelId: 'cancel',
+    html: '<p>雲端資料更新於 <b>' + fmtDT(meta.updatedAt) + '</b>，共 <b>' + (meta.count == null ? '?' : meta.count) + '</b> 筆。<br>這部裝置目前有 <b>' + localN + '</b> 筆。</p>' +
+      (localN === 0 ? '<p class="err">這部裝置沒有任何記錄。若直接上傳，會用空資料覆蓋雲端。建議選「先下載雲端資料」。</p>' : '<p class="muted">直接上傳會覆蓋雲端版本（舊版本會自動留一份備份）。</p>'),
+    actions: [{ id: 'download', label: '先下載雲端資料', cls: 'pri' }, { id: 'force', label: '仍然上傳並覆蓋', cls: 'danger' }, { id: 'cancel', label: '取消', cls: 'ghost' }]
+  });
+}
+async function syncUpload(opt) {
+  opt = opt || {}; const auto = !!opt.auto, force = !!opt.force;
+  if (!syncReady()) return;
+  if (syncBusy) { if (auto) { sync.pending = true; saveSync(); scheduleAuto(true); } return; }
+  if (!auto && !force && !allRecords().length) {
+    const ok = await confirmBox('上傳空資料？', '<p>這部裝置沒有任何記錄。上傳會用空資料覆蓋雲端（舊版本會自動備份）。<br>若想取回雲端資料，請改用「下載」。</p>', '仍然上傳', true);
+    if (!ok) return;
+  }
+  syncBusy = true; setStatus(auto ? '自動上傳中…' : '上傳中…');
+  try {
+    const snapshotMod = db.modifiedAt, payload = buildPayload();
+    const r = await callGas('upload', { data: payload, expectedUpdatedAt: sync.lastSyncedAt || null, force: force });
+    if (!r.ok && r.error === 'conflict') {
+      syncBusy = false; sync.pending = true; saveSync();
+      if (conflictOpen) return; conflictOpen = true;
+      setStatus('雲端有另一部裝置的較新資料，請選擇處理方式。', true);
+      const c = await conflictModal(r.meta || {}); conflictOpen = false;
+      if (c.id === 'force') { autoPaused = false; return syncUpload({ force: true }); }
+      if (c.id === 'download') { autoPaused = false; return syncDownload({ skipConfirm: true }); }
+      if (auto) autoPaused = true;
+      setStatus('已取消。雲端資料未被改動。' + (auto ? '自動上傳已暫停，請在設定手動處理。' : ''), true); return;
+    }
+    if (!r.ok) throw new GasError(r.error, r.message);
+    sync.lastSyncedAt = r.updatedAt; sync.lastOk = Date.now(); sync.pending = db.modifiedAt !== snapshotMod; autoPaused = false; saveSync();
+    setStatus('上傳完成 ✓ ' + payload.records.length + ' 筆（' + fmtDT(sync.lastOk) + '）');
+    if (!auto) toast('已上傳到 Google Drive');
+    if (sync.pending) scheduleAuto(true);
+  } catch (e) {
+    sync.pending = true; saveSync();
+    setStatus((auto ? '自動上傳失敗，連線恢復後會再試。' : '上傳失敗：') + errText(e), true);
+  } finally { syncBusy = false; }
+}
+async function syncDownload(opt) {
+  opt = opt || {}; if (needSetup() || syncBusy) return;
+  syncBusy = true; setStatus('下載中…');
+  try {
+    const r = await callGas('download');
+    if (!r.ok) throw new GasError(r.error, r.message);
+    if (!r.exists) { setStatus('雲端暫時沒有資料。'); toast('雲端暫時沒有資料'); return; }
+    const n = normalizeRecords(r.data && r.data.records);
+    syncBusy = false;
+    if (!opt.skipConfirm) {
+      const ok = await confirmBox('用雲端資料取代這部裝置？', '<p>雲端：<b>' + n.list.length + '</b> 筆（更新於 ' + fmtDT(r.updatedAt) + '）<br>本機：<b>' + allRecords().length + '</b> 筆</p><p class="muted">下載會用雲端版本取代本機資料。取代前會留一份，可在設定內還原。</p>', '取代本機資料', true);
+      if (!ok) { setStatus('已取消下載。'); return; }
+    }
+    applyRecords(n.list, 'replace', r.data && r.data.settings ? r.data.settings.slots : null);
+    db.modifiedAt = Date.now(); saveDb();
+    sync.lastSyncedAt = r.updatedAt; sync.lastOk = Date.now(); sync.pending = false; autoPaused = false; saveSync();
+    setStatus('下載完成 ✓ ' + n.list.length + ' 筆'); toast('已從 Google Drive 下載'); render();
+  } catch (e) { setStatus('下載失敗：' + errText(e), true); } finally { syncBusy = false; }
+}
+function scheduleAuto(retry) {
+  if (!sync.auto || !syncReady()) return;
+  sync.pending = true; saveSync();
+  if (autoPaused) { setStatus(baseStatus()); return; }
+  if (!allRecords().length) { setStatus('本機沒有資料，已略過自動上傳（避免覆蓋雲端）。'); return; }
+  clearTimeout(autoTimer);
+  if (!navigator.onLine) { setStatus('離線中：改動已存在本機，恢復網絡後會自動上傳。'); return; }
+  autoTimer = setTimeout(() => syncUpload({ auto: true }), retry ? 3000 : 3000);
+}
+window.addEventListener('online', () => { if (sync.auto && sync.pending && syncReady() && !autoPaused) { setStatus('網絡已恢復，正在補上傳…'); scheduleAuto(); } });
+
+/* ---------- 設定 ---------- */
+let deferredInstall = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferredInstall = e; if (ui.tab === 'settings') keepScroll(render); });
+const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+
+function viewSettings() {
+  setHeader('設定', '時段、備份與同步');
+  const prev = (() => { try { return JSON.parse(lsGet(KEY_PREV) || 'null'); } catch (e) { return null; } })();
+  const ios = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+  let html = '<section class="card"><h2>每日記錄時段</h2><div class="seg" id="slotSeg">' +
+    '<button data-act="slots" data-n="2" aria-pressed="' + (db.settings.slots === 2) + '">每日 2 次</button><button data-act="slots" data-n="3" aria-pressed="' + (db.settings.slots === 3) + '">每日 3 次</button></div>' +
+    '<p class="help">2 次＝早、晚；3 次＝早、午、晚。切換後，已經記錄的資料不會消失。</p></section>';
+  html += '<section class="card"><h2>備份與還原</h2><div class="btns"><button class="btn" data-act="expJson">匯出 JSON</button><button class="btn" data-act="expCsv">匯出 CSV</button></div>' +
+    '<button class="btn ghost block" style="margin-top:8px" data-act="import">匯入備份（JSON / CSV）</button>' +
+    (prev ? '<button class="btn ghost block" style="margin-top:8px" data-act="restorePrev">還原上一次覆蓋前的資料（' + esc(fmtDT(prev.at)) + '）</button>' : '') +
+    '<p class="help">所有資料只存在這部裝置的瀏覽器內。建議定期匯出備份。備份檔不含同步密碼。</p></section>';
+  html += '<section class="card"><h2>Google Drive 同步</h2>' +
+    '<label class="field"><span>Apps Script 網址</span><input type="url" id="sUrl" placeholder="https://script.google.com/macros/s/…/exec" autocapitalize="off" autocomplete="off" spellcheck="false" value="' + esc(sync.url) + '"></label>' +
+    '<label class="field"><span>密碼</span><input type="password" id="sTok" autocomplete="off" value="' + esc(sync.token) + '"></label>' +
+    '<div class="btns three"><button class="btn" data-act="sTest">測試連線</button><button class="btn pri" data-act="sUp">上傳</button><button class="btn" data-act="sDown">下載</button></div>' +
+    '<label class="switch" style="margin-top:8px"><span>資料有改動時自動上傳<div class="muted">改動約 3 秒後上傳；離線時先存本機，有網絡後補上傳</div></span><input type="checkbox" id="sAuto"' + (sync.auto ? ' checked' : '') + '></label>' +
+    '<div class="status" id="syncStatus" role="status">' + esc(statusMsg || baseStatus()) + '</div>' +
+    '<p class="help">資料會存在你 Drive 的「血壓記錄」資料夾。每次覆蓋前，舊版本會自動留一份備份。密碼只存在這部裝置，不會放入匯出的備份檔。換新手機：安裝 App → 填同樣的網址和密碼 → 按「下載」。</p></section>';
+  html += '<section class="card"><h2>安裝到桌面</h2>' +
+    (isStandalone() ? '<p style="margin:0">✓ 已用 App 模式開啟。</p>' :
+      (deferredInstall ? '<button class="btn pri block" data-act="install">安裝 App</button>' : '') +
+      '<p class="help" style="margin-top:' + (deferredInstall ? '8' : '0') + 'px">' + (ios ? 'iPhone：用 Safari 開啟本頁 → 按底部「分享」圖示 → 選「加入主畫面」。' : 'Android：用 Chrome 開啟 → 右上角「⋮」→「安裝應用程式」。iPhone：用 Safari →「分享」→「加入主畫面」。') + '</p>') + '</section>';
+  html += '<section class="card"><h2>危險區域</h2><button class="btn danger block" data-act="clear">清除這部裝置的所有資料</button><p class="help">不會影響 Google Drive 上已有的備份。</p></section>';
+  html += '<p class="muted" style="text-align:center;margin:6px 0 0">血壓記錄 v1.0 · 分類（正常 &lt;130/85、偏高 ≥140/90）僅供參考，不能代替醫生診斷。</p>';
+  main.innerHTML = html;
+  $('#sUrl').addEventListener('change', e => { const u = e.target.value.trim(); if (u !== sync.url) { sync.url = u; sync.lastSyncedAt = null; } saveSync(); setStatus(baseStatus()); });
+  $('#sTok').addEventListener('change', e => { sync.token = e.target.value; saveSync(); setStatus(baseStatus()); });
+  $('#sAuto').addEventListener('change', e => {
+    sync.auto = e.target.checked; saveSync();
+    if (sync.auto) { if (needSetup()) { e.target.checked = false; sync.auto = false; saveSync(); return; } autoPaused = false; if (sync.pending) scheduleAuto(); toast('已開啟自動上傳'); } else toast('已關閉自動上傳');
+  });
+}
+function commitSyncInputs() { const u = $('#sUrl'), t = $('#sTok'); if (u) sync.url = u.value.trim(); if (t) sync.token = t.value; saveSync(); }
+
+/* ---------- 事件 ---------- */
+document.addEventListener('click', async e => {
+  const tab = e.target.closest('#tabs button'); if (tab) { ui.tab = tab.dataset.tab; render(); main.scrollTop = 0; return; }
+  const b = e.target.closest('[data-act]'); if (!b || b.closest('.ov')) return;
+  const a = b.dataset.act;
+  if (a === 'prevDay') { ui.date = addDays(ui.date, -1); render(); }
+  else if (a === 'nextDay') { if (ui.date < todayStr()) { ui.date = addDays(ui.date, 1); render(); } }
+  else if (a === 'goToday') { ui.date = todayStr(); render(); }
+  else if (a === 'edit') openEntry(b.dataset.date, b.dataset.slot);
+  else if (a === 'mode') { ui.mode = b.dataset.mode; render(); }
+  else if (a === 'slots') { db.settings.slots = Number(b.dataset.n); touch(); keepScroll(render); toast('已改為每日 ' + b.dataset.n + ' 次'); }
+  else if (a === 'expJson') exportJSON();
+  else if (a === 'expCsv') exportCSV();
+  else if (a === 'import') $('#fileIn').click();
+  else if (a === 'restorePrev') {
+    const prev = JSON.parse(lsGet(KEY_PREV) || 'null'); if (!prev) return;
+    const n = Object.keys(prev.records || {}).length;
+    if (await confirmBox('還原到覆蓋之前？', '<p>會把本機資料還原到 ' + esc(fmtDT(prev.at)) + ' 之前的狀態（' + n + ' 筆），目前的資料會被取代。</p>', '還原', true)) {
+      db.records = prev.records; db.settings = Object.assign({ slots: 3 }, prev.settings); lsDel(KEY_PREV); touch(); render(); toast('已還原');
+    }
+  }
+  else if (a === 'sTest') { commitSyncInputs(); syncTest(); }
+  else if (a === 'sUp') { commitSyncInputs(); autoPaused = false; syncUpload(); }
+  else if (a === 'sDown') { commitSyncInputs(); autoPaused = false; syncDownload(); }
+  else if (a === 'install') { if (deferredInstall) { deferredInstall.prompt(); try { await deferredInstall.userChoice; } catch (x) {} deferredInstall = null; render(); } }
+  else if (a === 'clear') {
+    const n = allRecords().length;
+    if (!n) return toast('目前沒有資料');
+    if (await confirmBox('清除所有資料？', '<p>將刪除這部裝置上全部 <b>' + n + '</b> 筆記錄，無法直接復原（清除前會留一份，可在設定內還原）。<br>建議先匯出備份。</p>', '全部清除', true)) {
+      snapshotPrev('清除前'); db.records = {}; touch(); render(); toast('已清除');
+    }
+  }
+});
+document.addEventListener('change', e => {
+  if (e.target.id === 'datePick') { const v = e.target.value; if (/^\d{4}-\d{2}-\d{2}$/.test(v)) { ui.date = v > todayStr() ? todayStr() : v; render(); } }
+  else if (e.target.id === 'fileIn') { const f = e.target.files[0]; e.target.value = ''; handleFile(f); }
+});
+
+/* ---------- 啟動 ---------- */
+loadAll();
+render();
+if (sync.auto && sync.pending && syncReady()) setTimeout(() => { if (navigator.onLine) syncUpload({ auto: true }); }, 1500);
+// 日期跨日：App 回到前景時，如果停留在「今日」就更新
+document.addEventListener('visibilitychange', () => { if (!document.hidden && ui.tab === 'today' && !$('.ov')) { const t = todayStr(); if (ui.lastToday && ui.lastToday !== t && ui.date === ui.lastToday) ui.date = t; ui.lastToday = t; render(); } });
+ui.lastToday = todayStr();
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+}
+})();
+</script>
+</body>
+</html>
