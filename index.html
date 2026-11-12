@@ -227,7 +227,8 @@ function classify(sys, dia) {
   if (sys < 90 || dia < 60) return { t: '偏低', c: 'lo' };
   return { t: '正常', c: '' };
 }
-const ARMS = [['L', 1, '左臂<br>第1次'], ['L', 2, '左臂<br>第2次'], ['R', 1, '右臂<br>第1次'], ['R', 2, '右臂<br>第2次']];
+const ARMS = [['R', 1, '右臂<br>第1次'], ['L', 1, '左臂<br>第1次'], ['R', 2, '右臂<br>第2次'], ['L', 2, '左臂<br>第2次']];
+const CSV_ARMS = [['L', 1], ['L', 2], ['R', 1], ['R', 2]]; // CSV 欄位次序固定，與舊備份相容
 function armAvg(rd, a) { const l = (rd || []).filter(x => x.a === a); if (!l.length) return null; return { sys: avgOf(l, 'sys'), dia: avgOf(l, 'dia'), pulse: avgOf(l, 'pulse'), n: l.length }; }
 function armLine(r) {
   if (!r || !r.rd || !r.rd.length) return '';
@@ -484,7 +485,7 @@ function normalizeRecords(arr) {
 function csvEscape(s) { s = String(s == null ? '' : s); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
 function buildCSV() {
   const rows = [['日期', '時段', '時間', '上壓', '下壓', '心跳', '備註', '左臂1', '左臂2', '右臂1', '右臂2']];
-  sortedRecords().forEach(r => rows.push([r.date, SLOTS[r.slot].name, r.time || '', r.sys, r.dia, r.pulse == null ? '' : r.pulse, r.note || ''].concat(ARMS.map(A => { const x = (r.rd || []).find(q => q.a === A[0] && q.i === A[1]); return x ? x.sys + '/' + x.dia + '/' + (x.pulse == null ? '' : x.pulse) : ''; }))));
+  sortedRecords().forEach(r => rows.push([r.date, SLOTS[r.slot].name, r.time || '', r.sys, r.dia, r.pulse == null ? '' : r.pulse, r.note || ''].concat(CSV_ARMS.map(A => { const x = (r.rd || []).find(q => q.a === A[0] && q.i === A[1]); return x ? x.sys + '/' + x.dia + '/' + (x.pulse == null ? '' : x.pulse) : ''; }))));
   return '﻿' + rows.map(a => a.map(csvEscape).join(',')).join('\r\n');
 }
 function parseCSV(text) {
@@ -502,7 +503,7 @@ function parseCSV(text) {
 }
 function csvToRecords(text) {
   const rows = parseCSV(text), nameToSlot = {}; SLOT_ORDER.forEach(s => nameToSlot[SLOTS[s].name] = s);
-  return rows.slice(1).map(a => ({ date: (a[0] || '').trim(), slot: nameToSlot[(a[1] || '').trim()] || (a[1] || '').trim(), time: (a[2] || '').trim(), sys: a[3], dia: a[4], pulse: a[5], note: a[6], readings: ARMS.map((A, k) => { const t = (a[7 + k] || '').split('/'); return t.length >= 2 && t[0] !== '' ? { arm: A[0] === 'L' ? 'left' : 'right', n: A[1], sys: t[0], dia: t[1], pulse: t[2] || '' } : null; }).filter(Boolean) }));
+  return rows.slice(1).map(a => ({ date: (a[0] || '').trim(), slot: nameToSlot[(a[1] || '').trim()] || (a[1] || '').trim(), time: (a[2] || '').trim(), sys: a[3], dia: a[4], pulse: a[5], note: a[6], readings: CSV_ARMS.map((A, k) => { const t = (a[7 + k] || '').split('/'); return t.length >= 2 && t[0] !== '' ? { arm: A[0] === 'L' ? 'left' : 'right', n: A[1], sys: t[0], dia: t[1], pulse: t[2] || '' } : null; }).filter(Boolean) }));
 }
 async function saveFile(name, mime, text) {
   const blob = new Blob([text], { type: mime });
