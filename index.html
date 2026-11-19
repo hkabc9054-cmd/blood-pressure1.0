@@ -137,6 +137,13 @@ hr.sp{border:0;border-top:1px solid var(--line);margin:14px 0}
 .bpgrid .field{margin:0}
 .bpgrid input{text-align:center;font-size:24px !important;font-weight:800;padding:10px 4px !important}
 .stack{display:grid;gap:8px;margin-top:6px}
+.medtag{display:inline-block;background:var(--c2);color:#17301c;font-size:11px;font-weight:700;padding:1px 8px;border-radius:99px;margin-right:6px;white-space:nowrap}
+.medline{margin-top:3px}
+.mhead{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;font-weight:800;color:var(--c3);background:var(--c2);border-radius:14px;padding:12px 14px;margin:12px 0 6px;font-size:15px}
+.mhead .mmeta{font-size:12px;font-weight:700;color:#1f3322;display:flex;align-items:center;gap:8px;white-space:nowrap}
+.mhead .chv{font-style:normal;font-size:16px;transition:transform .2s;transform:rotate(-90deg)}
+.mhead .chv.open{transform:none}
+.card .mhead{margin:8px 0 2px;background:var(--c1)}
 .rhead,.rrow{display:grid;grid-template-columns:58px 1fr 1fr 1fr;gap:6px;align-items:center}
 .rhead{font-size:12px;font-weight:700;color:var(--c3);text-align:center;margin-bottom:2px}
 .rrow{margin-bottom:6px}
@@ -201,11 +208,11 @@ const SLOTS = {
 const SLOT_ORDER = ['m', 'a', 'e'];
 const KEY_DATA = 'bp.v1.data', KEY_SYNC = 'bp.v1.sync', KEY_PREV = 'bp.v1.prev';
 
-let db = { settings: { slots: 3 }, records: {}, modifiedAt: 0 };
+let db = { settings: { slots: 3 }, records: {}, meds: {}, modifiedAt: 0 };
 let sync = { url: '', token: '', auto: false, lastSyncedAt: null, pending: false, deviceId: '', lastOk: 0 };
 
 function loadAll() {
-  try { const j = JSON.parse(lsGet(KEY_DATA) || 'null'); if (j && j.records) { db.records = j.records; db.settings = Object.assign({ slots: 3 }, j.settings || {}); db.modifiedAt = j.modifiedAt || 0; } } catch (e) {}
+  try { const j = JSON.parse(lsGet(KEY_DATA) || 'null'); if (j && j.records) { db.records = j.records; db.meds = j.meds || {}; db.settings = Object.assign({ slots: 3 }, j.settings || {}); db.modifiedAt = j.modifiedAt || 0; } } catch (e) {}
   try { const j = JSON.parse(lsGet(KEY_SYNC) || 'null'); if (j) sync = Object.assign(sync, j); } catch (e) {}
   if (!sync.deviceId) { sync.deviceId = 'd' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); saveSync(); }
 }
@@ -237,6 +244,11 @@ function armLine(r) {
   if (L && R) parts.push('左右差 ' + Math.abs(L.sys - R.sys));
   return parts.join(' ・ ') + ' ・ 量度 ' + r.rd.length + ' 次';
 }
+const isOpen = (key, idx) => ui.open[key] !== undefined ? ui.open[key] : idx === 0; // 最新一個月預設展開，其餘收起
+const mhead = (key, mk, open, meta) => '<button class="mhead" data-act="toggleMonth" data-key="' + key + '" aria-expanded="' + open + '"><span>' + esc(periodLabel('month', mk)) + '</span><span class="mmeta">' + meta + '<i class="chv' + (open ? ' open' : '') + '">▾</i></span></button>';
+const medDatesIn = mk => Object.keys(db.meds).filter(d => d.slice(0, 7) === mk).sort();
+const medMD = d => { const x = parseD(d); return (x.getMonth() + 1) + '/' + x.getDate(); };
+const medLine = mk => { const l = medDatesIn(mk); return '<div class="sub medline"><span class="medtag">取藥</span>' + (l.length ? l.length + ' 次：' + l.map(medMD).join('、') : '本月未有記錄') + '</div>'; };
 const badge = (sys, dia) => { const c = classify(sys, dia); return c ? '<span class="badge ' + c.c + '">' + c.t + '</span>' : ''; };
 function periodKey(mode, d) { return mode === 'day' ? d : mode === 'week' ? weekStart(d) : d.slice(0, 7); }
 function periodLabel(mode, k) {
@@ -256,7 +268,7 @@ function groupBy(mode) {
 function recordsIn(mode, key) { return allRecords().filter(r => periodKey(mode, r.date) === key); }
 
 /* ---------- UI 狀態 ---------- */
-const ui = { tab: 'today', date: todayStr(), mode: 'day' };
+const ui = { tab: 'today', date: todayStr(), mode: 'day', open: {} };
 const main = $('#main');
 
 function toast(msg, ms) {
@@ -357,42 +369,86 @@ function chartSVG(pts) {
 
 function viewStats() {
   setHeader('統計', '日、週、月平均值');
-  const mode = ui.mode, groups = groupBy(mode);
+  const mode = ui.mode; let groups = groupBy(mode);
+  if (mode === 'month') {
+    const have = new Set(groups.map(g => g.key));
+    Object.keys(db.meds).forEach(dd => { const k = dd.slice(0, 7); if (!have.has(k)) { have.add(k); groups.push({ key: k, n: 0, sys: null, dia: null, pulse: null, days: 0 }); } });
+    groups.sort((a, b) => a.key < b.key ? -1 : 1);
+  }
   const t = todayStr(), wk = weekStart(t), mo = t.slice(0, 7);
   const wSum = summarize(recordsIn('week', wk)), mSum = summarize(recordsIn('month', mo));
   const tile = (k, s, sub) => '<div class="tile"><div class="k">' + k + '</div><div class="n">' + (s.n ? s.sys + '/' + s.dia : '—') + '</div><div class="s">' + (s.n ? '心跳 ' + (s.pulse == null ? '—' : s.pulse) + ' · ' + s.n + ' 個時段' : '暫時沒有記錄') + '</div></div>';
-  const lim = mode === 'day' ? 30 : mode === 'week' ? 26 : 24, chartN = mode === 'day' ? 14 : 12;
-  const shown = groups.slice(-lim), chartPts = groups.slice(-chartN).map(g => Object.assign({ lab: periodShort(mode, g.key) }, g));
-  let html = '<div class="tiles" id="tiles">' + tile('本週平均', wSum) + tile('本月平均', mSum) + '</div>';
+  const lim = mode === 'day' ? 9999 : mode === 'week' ? 26 : 24, chartN = mode === 'day' ? 14 : 12;
+  const shown = groups.slice(-lim), chartPts = groups.filter(g => g.n > 0).slice(-chartN).map(g => Object.assign({ lab: periodShort(mode, g.key) }, g));
+  let html = '<div class="tiles" id="tiles">' + tile('本週平均', wSum) + (t => t.slice(0, -6) + '<div class="s"><span class="medtag">取藥</span>' + (medDatesIn(mo).length ? medDatesIn(mo).map(medMD).join('、') : '未有記錄') + '</div></div>')(tile('本月平均', mSum)) + '</div>';
   html += '<div class="seg" id="modeSeg" style="margin-bottom:12px">' + [['day', '每日'], ['week', '每週'], ['month', '每月']].map(a => '<button data-act="mode" data-mode="' + a[0] + '" aria-pressed="' + (mode === a[0]) + '">' + a[1] + '</button>').join('') + '</div>';
   html += '<section class="card"><h2>走勢（' + (mode === 'day' ? '每日' : mode === 'week' ? '每週' : '每月') + '平均）</h2>' + chartSVG(chartPts) + '</section>';
   html += '<section class="card"><h2>' + (mode === 'day' ? '每日' : mode === 'week' ? '每週（週一至週日）' : '每月') + '平均值</h2>';
   if (!shown.length) html += '<div class="empty">還沒有記錄，先到「今日」新增一筆吧。</div>';
-  else html += '<ul class="plist" id="plist">' + shown.slice().reverse().map(g =>
-    '<li><div><div class="lab">' + esc(periodLabel(mode, g.key)) + '</div><div class="sub">' + g.n + ' 個時段記錄' + (mode !== 'day' ? '・' + g.days + ' 天有記錄' : '') + ' ・ ' + badge(g.sys, g.dia) + '</div></div>' +
-    '<div class="num">' + g.sys + '/' + g.dia + '<div class="sub pul">心跳 ' + (g.pulse == null ? '—' : g.pulse) + '</div></div></li>').join('') + '</ul>';
+  else {
+    const li = g => '<li><div><div class="lab">' + esc(periodLabel(mode, g.key)) + '</div>' +
+      (g.n ? '<div class="sub">' + g.n + ' 個時段記錄' + (mode !== 'day' ? '・' + g.days + ' 天有記錄' : '') + ' ・ ' + badge(g.sys, g.dia) + '</div>' : '<div class="sub">這個月沒有血壓記錄</div>') +
+      (mode === 'month' ? medLine(g.key) : '') + '</div>' +
+      (g.n ? '<div class="num">' + g.sys + '/' + g.dia + '<div class="sub pul">心跳 ' + (g.pulse == null ? '—' : g.pulse) + '</div></div>' : '') + '</li>';
+    if (mode === 'day') {
+      const months = []; shown.slice().reverse().forEach(g => { const k = g.key.slice(0, 7); if (!months.length || months[months.length - 1].k !== k) months.push({ k: k, items: [] }); months[months.length - 1].items.push(g); });
+      html += '<div id="plist">' + months.map((M, i) => {
+        const key = 's:' + M.k, open = isOpen(key, i), sm = summarize(recordsIn('month', M.k));
+        return mhead(key, M.k, open, (sm.n ? '平均 ' + sm.sys + '/' + sm.dia + '・' : '') + M.items.length + ' 天') + (open ? '<ul class="plist">' + M.items.map(li).join('') + '</ul>' : '');
+      }).join('') + '</div>';
+      if (months.length > 1) html += '<p class="help">只展開最新一個月，點月份標題可展開或收起較早的記錄。</p>';
+    } else html += '<ul class="plist" id="plist">' + shown.slice().reverse().map(li).join('') + '</ul>';
+  }
   html += '<p class="help">每個時段先把左右臂共 4 次量度平均，日／週／月平均再以各時段的平均值計算（四捨五入至整數）。分類只作參考，並非診斷。</p></section>';
   main.innerHTML = html;
 }
 
 function viewHistory() {
-  setHeader('紀錄', allRecords().length + ' 筆記錄');
-  const recs = allRecords();
-  if (!recs.length) { main.innerHTML = '<div class="empty">還沒有任何記錄。</div>'; return; }
+  const recs = allRecords(), medN = Object.keys(db.meds).length;
+  setHeader('紀錄', recs.length + ' 筆記錄' + (medN ? '・' + medN + ' 次取藥' : ''));
+  const top = '<button class="btn ghost block" style="margin-bottom:6px" data-act="addMed">＋ 記錄取藥日期</button>';
+  if (!recs.length && !medN) { main.innerHTML = top + '<div class="empty">還沒有任何記錄。</div>'; return; }
   const byDate = {}; recs.forEach(r => (byDate[r.date] = byDate[r.date] || []).push(r));
-  const dates = Object.keys(byDate).sort().reverse();
-  let html = '<div id="hist">';
-  dates.forEach(d => {
-    const list = byDate[d].sort((a, b) => SLOT_ORDER.indexOf(a.slot) - SLOT_ORDER.indexOf(b.slot)), sm = summarize(list);
-    html += '<div class="dayhead"><div>' + esc(fmtLong(d)) + '</div><span>平均 ' + sm.sys + '/' + sm.dia + (sm.pulse != null ? ' · ' + sm.pulse : '') + '</span></div>';
-    list.forEach(r => {
-      html += '<button class="hrow" data-act="edit" data-date="' + r.date + '" data-slot="' + r.slot + '"><span class="sl">' + SLOTS[r.slot].name + '</span><span class="bp">' + r.sys + '/' + r.dia + (r.pulse != null ? '<small>♥ ' + r.pulse + '</small>' : '') + '</span>' + badge(r.sys, r.dia) + ((armLine(r) || r.note) ? '<span class="nt">' + esc((armLine(r) ? armLine(r) + (r.note ? '・' : '') : '') + (r.note || '')) + '</span>' : '') + '</button>';
+  const dates = Array.from(new Set(Object.keys(byDate).concat(Object.keys(db.meds)))).sort().reverse();
+  let html = top + '<div id="hist">';
+  const months = []; dates.forEach(d => { const k = d.slice(0, 7); if (!months.length || months[months.length - 1].k !== k) months.push({ k: k, dates: [] }); months[months.length - 1].dates.push(d); });
+  months.forEach((M, i) => {
+    const key = 'h:' + M.k, open = isOpen(key, i);
+    const rn = M.dates.reduce((n, d) => n + (byDate[d] ? byDate[d].length : 0), 0), mn = M.dates.filter(d => db.meds[d]).length;
+    html += mhead(key, M.k, open, rn + ' 筆' + (mn ? '・取藥 ' + mn + ' 次' : ''));
+    if (!open) return;
+    M.dates.forEach(d => {
+      const list = (byDate[d] || []).sort((a, b) => SLOT_ORDER.indexOf(a.slot) - SLOT_ORDER.indexOf(b.slot)), sm = summarize(list), med = db.meds[d];
+      html += '<div class="dayhead"><div>' + esc(fmtLong(d)) + '</div><span>' + (list.length ? '平均 ' + sm.sys + '/' + sm.dia + (sm.pulse != null ? ' · ' + sm.pulse : '') : '') + '</span></div>';
+      list.forEach(r => {
+        html += '<button class="hrow" data-act="edit" data-date="' + r.date + '" data-slot="' + r.slot + '"><span class="sl">' + SLOTS[r.slot].name + '</span><span class="bp">' + r.sys + '/' + r.dia + (r.pulse != null ? '<small>♥ ' + r.pulse + '</small>' : '') + '</span>' + badge(r.sys, r.dia) + ((armLine(r) || r.note) ? '<span class="nt">' + esc((armLine(r) ? armLine(r) + (r.note ? '・' : '') : '') + (r.note || '')) + '</span>' : '') + '</button>';
+      });
+      if (med) html += '<button class="hrow medrow" data-act="editMed" data-date="' + d + '"><span class="sl">取藥</span><span class="bp" style="font-size:15px;color:var(--c3)">取藥日' + (med.note ? '・' + esc(med.note) : '') + '</span><span class="medtag" style="margin:0">藥</span></button>';
     });
   });
   main.innerHTML = html + '</div>';
 }
 
 /* ---------- 新增 / 編輯 ---------- */
+async function openMed(date, isNew) {
+  const ex = isNew ? null : db.meds[date]; // 「＋ 記錄取藥日期」一律是新增，不會當成修改今日那筆
+  const actions = [{ id: 'save', label: '儲存', cls: 'pri' }];
+  if (ex) actions.push({ id: 'del', label: '刪除取藥記錄', cls: 'danger' });
+  actions.push({ id: 'cancel', label: '取消', cls: 'ghost' });
+  const r = await modal({
+    title: ex ? '修改取藥記錄' : '記錄取藥日期', cancelId: 'cancel', enterId: 'save', actions: actions,
+    html: '<div id="err" class="err hidden"></div><label class="field"><span>取藥日期</span><input type="date" id="mDate" value="' + date + '"></label>' +
+      '<label class="field"><span>備註（選填，例如藥名、診所）</span><input type="text" id="mNote" maxlength="60" value="' + esc(ex ? ex.note : '') + '"></label>',
+    validate: sh => { const v = $('#mDate', sh).value; if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) { const e = $('#err', sh); e.textContent = '請選擇取藥日期。'; e.classList.remove('hidden'); return false; } return { date: v, note: $('#mNote', sh).value.trim() }; }
+  });
+  if (r.id === 'save') {
+    if (ex && r.data.date !== date) delete db.meds[date]; // 只有「修改」舊記錄才搬移日期
+    db.meds[r.data.date] = { date: r.data.date, note: r.data.note, u: Date.now() };
+    touch(); render(); toast('已儲存取藥日期');
+  } else if (r.id === 'del') {
+    if (await confirmBox('刪除取藥記錄？', '<p>' + esc(fmtLong(date)) + ' 的取藥記錄會被刪除。</p>', '刪除', true)) { delete db.meds[date]; touch(); render(); toast('已刪除'); }
+  }
+}
 function readRows(sh, strict) {
   const rd = []; let error = null;
   ARMS.forEach((A, k) => {
@@ -422,9 +478,9 @@ async function openEntry(date, slot) {
   ARMS.forEach((A, k) => {
     const x = rdMap[A[0] + A[1]] || {}, nm = A[2].replace('<br>', '');
     rows += '<div class="rrow"><div class="rl ' + (A[0] === 'R' ? 'r' : '') + '">' + A[2] + '</div>' +
-      '<input type="number" inputmode="numeric" id="r' + k + 's" placeholder="120" aria-label="' + nm + ' 上壓" value="' + val(x.sys) + '">' +
-      '<input type="number" inputmode="numeric" id="r' + k + 'd" placeholder="80" aria-label="' + nm + ' 下壓" value="' + val(x.dia) + '">' +
-      '<input type="number" inputmode="numeric" id="r' + k + 'h" placeholder="70" aria-label="' + nm + ' 心跳" value="' + val(x.pulse) + '"></div>';
+      '<input type="number" inputmode="numeric" id="r' + k + 's" aria-label="' + nm + ' 上壓" value="' + val(x.sys) + '">' +
+      '<input type="number" inputmode="numeric" id="r' + k + 'd" aria-label="' + nm + ' 下壓" value="' + val(x.dia) + '">' +
+      '<input type="number" inputmode="numeric" id="r' + k + 'h" aria-label="' + nm + ' 心跳" value="' + val(x.pulse) + '"></div>';
   });
   const html = '<p class="muted" style="margin-bottom:10px">' + esc(fmtLong(date)) + ' · ' + S.name + '<br>左右臂各量 2 次，系統會計算這個時段的平均值。' + (legacy ? '<br><b>這是舊記錄（只有一組平均值），已填入「左臂第1次」，儲存後會以新輸入為準。</b>' : '') + '</p><div id="err" class="err hidden"></div>' +
     '<div class="rhead"><span></span><span>上壓</span><span>下壓</span><span>心跳</span></div>' + rows +
@@ -442,6 +498,14 @@ async function openEntry(date, slot) {
         box.innerHTML = '時段平均 <b>' + sm.sys + '/' + sm.dia + '</b>' + (sm.pulse != null ? '　心跳 <b>' + sm.pulse + '</b>' : '') + '（' + g.rd.length + '/4 次）' +
           (L || R ? '<div class="arms" style="color:inherit;opacity:.85;margin-top:2px">' + (L ? '左 ' + L.sys + '/' + L.dia : '') + (L && R ? '　' : '') + (R ? '右 ' + R.sys + '/' + R.dia : '') + (L && R ? '　左右差 ' + Math.abs(L.sys - R.sys) : '') + '</div>' : ''); };
       sh.addEventListener('input', upd); upd();
+      sh.addEventListener('input', ev => {
+        const t = ev.target; if (!t.id || !/^r\d[sdh]$/.test(t.id)) return;
+        let v = t.value; if (v.length > 3) t.value = v = v.slice(0, 3);
+        if (document.activeElement !== t) return;
+        const k = t.id[1], c = t.id[2], go = id => { const n = $('#' + id, sh); if (n) { n.focus(); try { n.select(); } catch (e) {} } };
+        if (c === 's' && v.length >= 3) go('r' + k + 'd');                       // 上壓 3 位 → 下壓
+        else if (c === 'd' && (v.length >= 3 || (v.length >= 2 && v[0] !== '1'))) go('r' + k + 'h'); // 下壓 2 位 → 心跳（100 以上要 3 位）
+      });
       const f = $('#r0s', sh); if (f && !ex) f.focus({ preventScroll: true });
     },
     validate: sh => {
@@ -465,7 +529,7 @@ async function openEntry(date, slot) {
 function sortedRecords() { return allRecords().slice().sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : SLOT_ORDER.indexOf(a.slot) - SLOT_ORDER.indexOf(b.slot)); }
 function buildPayload() {
   return { app: 'bp-tracker', version: 1, exportedAt: new Date().toISOString(), settings: { slots: db.settings.slots },
-    records: sortedRecords().map(r => { const o = { date: r.date, slot: r.slot, sys: r.sys, dia: r.dia, pulse: r.pulse, time: r.time || '', note: r.note || '' }; if (r.rd && r.rd.length) o.readings = r.rd.map(x => ({ arm: x.a === 'L' ? 'left' : 'right', n: x.i, sys: x.sys, dia: x.dia, pulse: x.pulse })); return o; }) };
+    records: sortedRecords().map(r => { const o = { date: r.date, slot: r.slot, sys: r.sys, dia: r.dia, pulse: r.pulse, time: r.time || '', note: r.note || '' }; if (r.rd && r.rd.length) o.readings = r.rd.map(x => ({ arm: x.a === 'L' ? 'left' : 'right', n: x.i, sys: x.sys, dia: x.dia, pulse: x.pulse })); return o; }), meds: Object.values(db.meds).sort((a, b) => a.date < b.date ? -1 : 1).map(m => ({ date: m.date, note: m.note || '' })) };
 }
 function normalizeRecords(arr) {
   const out = []; let skipped = 0;
@@ -482,10 +546,12 @@ function normalizeRecords(arr) {
   });
   return { list: out, skipped: skipped };
 }
+function normalizeMeds(arr) { const out = []; (Array.isArray(arr) ? arr : []).forEach(x => { const d = String(x && x.date || ''); if (/^\d{4}-\d{2}-\d{2}$/.test(d) && !isNaN(parseD(d))) out.push({ date: d, note: String(x.note || '').slice(0, 60), u: Date.now() }); }); return out; }
 function csvEscape(s) { s = String(s == null ? '' : s); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
 function buildCSV() {
   const rows = [['日期', '時段', '時間', '上壓', '下壓', '心跳', '備註', '左臂1', '左臂2', '右臂1', '右臂2']];
   sortedRecords().forEach(r => rows.push([r.date, SLOTS[r.slot].name, r.time || '', r.sys, r.dia, r.pulse == null ? '' : r.pulse, r.note || ''].concat(CSV_ARMS.map(A => { const x = (r.rd || []).find(q => q.a === A[0] && q.i === A[1]); return x ? x.sys + '/' + x.dia + '/' + (x.pulse == null ? '' : x.pulse) : ''; }))));
+  Object.values(db.meds).sort((a, b) => a.date < b.date ? -1 : 1).forEach(m => rows.push([m.date, '取藥', '', '', '', '', m.note || '', '', '', '', '']));
   return '﻿' + rows.map(a => a.map(csvEscape).join(',')).join('\r\n');
 }
 function parseCSV(text) {
@@ -501,9 +567,10 @@ function parseCSV(text) {
   row.push(f); if (row.length > 1 || row[0] !== '') rows.push(row);
   return rows;
 }
+function csvToMeds(text) { return parseCSV(text).slice(1).filter(a => (a[1] || '').trim() === '取藥').map(a => ({ date: (a[0] || '').trim(), note: a[6] })); }
 function csvToRecords(text) {
   const rows = parseCSV(text), nameToSlot = {}; SLOT_ORDER.forEach(s => nameToSlot[SLOTS[s].name] = s);
-  return rows.slice(1).map(a => ({ date: (a[0] || '').trim(), slot: nameToSlot[(a[1] || '').trim()] || (a[1] || '').trim(), time: (a[2] || '').trim(), sys: a[3], dia: a[4], pulse: a[5], note: a[6], readings: CSV_ARMS.map((A, k) => { const t = (a[7 + k] || '').split('/'); return t.length >= 2 && t[0] !== '' ? { arm: A[0] === 'L' ? 'left' : 'right', n: A[1], sys: t[0], dia: t[1], pulse: t[2] || '' } : null; }).filter(Boolean) }));
+  return rows.slice(1).filter(a => (a[1] || '').trim() !== '取藥').map(a => ({ date: (a[0] || '').trim(), slot: nameToSlot[(a[1] || '').trim()] || (a[1] || '').trim(), time: (a[2] || '').trim(), sys: a[3], dia: a[4], pulse: a[5], note: a[6], readings: CSV_ARMS.map((A, k) => { const t = (a[7 + k] || '').split('/'); return t.length >= 2 && t[0] !== '' ? { arm: A[0] === 'L' ? 'left' : 'right', n: A[1], sys: t[0], dia: t[1], pulse: t[2] || '' } : null; }).filter(Boolean) }));
 }
 async function saveFile(name, mime, text) {
   const blob = new Blob([text], { type: mime });
@@ -519,29 +586,30 @@ const stamp = () => { const d = new Date(); return d.getFullYear() + pad(d.getMo
 async function exportJSON() { if (!allRecords().length) return toast('目前沒有資料可匯出'); const r = await saveFile('血壓記錄-' + stamp() + '.json', 'application/json', JSON.stringify(buildPayload(), null, 2)); if (r !== 'cancel') toast('已匯出 JSON 備份'); }
 async function exportCSV() { if (!allRecords().length) return toast('目前沒有資料可匯出'); const r = await saveFile('血壓記錄-' + stamp() + '.csv', 'text/csv;charset=utf-8', buildCSV()); if (r !== 'cancel') toast('已匯出 CSV'); }
 
-function snapshotPrev(reason) { lsSet(KEY_PREV, JSON.stringify({ at: Date.now(), reason: reason, settings: db.settings, records: db.records })); }
-function applyRecords(list, mode, slots) {
+function snapshotPrev(reason) { lsSet(KEY_PREV, JSON.stringify({ at: Date.now(), reason: reason, settings: db.settings, records: db.records, meds: db.meds })); }
+function applyRecords(list, mode, slots, meds) {
   snapshotPrev(mode === 'replace' ? '取代前' : '合併前');
-  if (mode === 'replace') db.records = {};
+  if (mode === 'replace') { db.records = {}; db.meds = {}; }
+  (meds || []).forEach(m => { db.meds[m.date] = m; });
   list.forEach(r => { db.records[rkey(r.date, r.slot)] = r; });
   if (slots === 2 || slots === 3) db.settings.slots = slots;
 }
 async function handleFile(file) {
   if (!file) return;
   let text; try { text = await file.text(); } catch (e) { return notice('讀取失敗', '<p>無法讀取這個檔案。</p>'); }
-  let list, skipped = 0, slots = null;
+  let list, skipped = 0, slots = null, meds = [];
   try {
-    if (/\.csv$/i.test(file.name) || (text.replace(/^﻿/, '')[0] !== '{' && text.replace(/^﻿/, '')[0] !== '[')) { const n = normalizeRecords(csvToRecords(text)); list = n.list; skipped = n.skipped; }
-    else { const j = JSON.parse(text); const n = normalizeRecords(Array.isArray(j) ? j : j.records); list = n.list; skipped = n.skipped; slots = j && j.settings ? j.settings.slots : null; }
+    if (/\.csv$/i.test(file.name) || (text.replace(/^﻿/, '')[0] !== '{' && text.replace(/^﻿/, '')[0] !== '[')) { const n = normalizeRecords(csvToRecords(text)); list = n.list; skipped = n.skipped; meds = normalizeMeds(csvToMeds(text)); }
+    else { const j = JSON.parse(text); const n = normalizeRecords(Array.isArray(j) ? j : j.records); list = n.list; skipped = n.skipped; slots = j && j.settings ? j.settings.slots : null; meds = normalizeMeds(j && j.meds); }
   } catch (e) { return notice('匯入失敗', '<p>檔案格式不正確，請選擇由本 App 匯出的 JSON 或 CSV。</p>'); }
-  if (!list.length) return notice('沒有可匯入的記錄', '<p>檔案內找不到有效的血壓記錄' + (skipped ? '（略過 ' + skipped + ' 筆格式不正確）' : '') + '。</p>');
+  if (!list.length && !meds.length) return notice('沒有可匯入的記錄', '<p>檔案內找不到有效的血壓記錄' + (skipped ? '（略過 ' + skipped + ' 筆格式不正確）' : '') + '。</p>');
   const r = await modal({
-    title: '匯入 ' + list.length + ' 筆記錄', cancelId: 'cancel',
+    title: '匯入 ' + list.length + ' 筆記錄' + (meds.length ? '、' + meds.length + ' 個取藥日期' : ''), cancelId: 'cancel',
     html: '<p>本機目前有 <b>' + allRecords().length + '</b> 筆記錄。' + (skipped ? '<br><span class="muted">另有 ' + skipped + ' 筆格式不正確，已略過。</span>' : '') + '</p><p class="muted">合併：保留本機記錄，同一日期同一時段以匯入的為準。<br>取代：先清空本機，再用匯入的資料。</p>',
     actions: [{ id: 'merge', label: '合併', cls: 'pri' }, { id: 'replace', label: '取代全部', cls: 'danger' }, { id: 'cancel', label: '取消', cls: 'ghost' }]
   });
   if (r.id === 'cancel') return;
-  applyRecords(list, r.id, slots); touch(); render(); toast('已匯入 ' + list.length + ' 筆記錄');
+  applyRecords(list, r.id, slots, meds); touch(); render(); toast('已匯入 ' + list.length + ' 筆記錄' + (meds.length ? '和 ' + meds.length + ' 個取藥日期' : ''));
 }
 
 /* ---------- Google Drive 同步 ---------- */
@@ -640,7 +708,7 @@ async function syncDownload(opt) {
       const ok = await confirmBox('用雲端資料取代這部裝置？', '<p>雲端：<b>' + n.list.length + '</b> 筆（更新於 ' + fmtDT(r.updatedAt) + '）<br>本機：<b>' + allRecords().length + '</b> 筆</p><p class="muted">下載會用雲端版本取代本機資料。取代前會留一份，可在設定內還原。</p>', '取代本機資料', true);
       if (!ok) { setStatus('已取消下載。'); return; }
     }
-    applyRecords(n.list, 'replace', r.data && r.data.settings ? r.data.settings.slots : null);
+    applyRecords(n.list, 'replace', r.data && r.data.settings ? r.data.settings.slots : null, normalizeMeds(r.data && r.data.meds));
     db.modifiedAt = Date.now(); saveDb();
     sync.lastSyncedAt = r.updatedAt; sync.lastOk = Date.now(); sync.pending = false; autoPaused = false; saveSync();
     setStatus('下載完成 ✓ ' + n.list.length + ' 筆'); toast('已從 Google Drive 下載'); render();
@@ -705,6 +773,9 @@ document.addEventListener('click', async e => {
   else if (a === 'nextDay') { if (ui.date < todayStr()) { ui.date = addDays(ui.date, 1); render(); } }
   else if (a === 'goToday') { ui.date = todayStr(); render(); }
   else if (a === 'edit') openEntry(b.dataset.date, b.dataset.slot);
+  else if (a === 'editMed') openMed(b.dataset.date);
+  else if (a === 'toggleMonth') { ui.open[b.dataset.key] = b.getAttribute('aria-expanded') !== 'true'; keepScroll(render); }
+  else if (a === 'addMed') openMed(todayStr(), true);
   else if (a === 'mode') { ui.mode = b.dataset.mode; render(); }
   else if (a === 'slots') { db.settings.slots = Number(b.dataset.n); touch(); keepScroll(render); toast('已改為每日 ' + b.dataset.n + ' 次'); }
   else if (a === 'expJson') exportJSON();
@@ -714,7 +785,7 @@ document.addEventListener('click', async e => {
     const prev = JSON.parse(lsGet(KEY_PREV) || 'null'); if (!prev) return;
     const n = Object.keys(prev.records || {}).length;
     if (await confirmBox('還原到覆蓋之前？', '<p>會把本機資料還原到 ' + esc(fmtDT(prev.at)) + ' 之前的狀態（' + n + ' 筆），目前的資料會被取代。</p>', '還原', true)) {
-      db.records = prev.records; db.settings = Object.assign({ slots: 3 }, prev.settings); lsDel(KEY_PREV); touch(); render(); toast('已還原');
+      db.records = prev.records; db.meds = prev.meds || {}; db.settings = Object.assign({ slots: 3 }, prev.settings); lsDel(KEY_PREV); touch(); render(); toast('已還原');
     }
   }
   else if (a === 'sTest') { commitSyncInputs(); syncTest(); }
@@ -722,10 +793,10 @@ document.addEventListener('click', async e => {
   else if (a === 'sDown') { commitSyncInputs(); autoPaused = false; syncDownload(); }
   else if (a === 'install') { if (deferredInstall) { deferredInstall.prompt(); try { await deferredInstall.userChoice; } catch (x) {} deferredInstall = null; render(); } }
   else if (a === 'clear') {
-    const n = allRecords().length;
-    if (!n) return toast('目前沒有資料');
-    if (await confirmBox('清除所有資料？', '<p>將刪除這部裝置上全部 <b>' + n + '</b> 筆記錄，無法直接復原（清除前會留一份，可在設定內還原）。<br>建議先匯出備份。</p>', '全部清除', true)) {
-      snapshotPrev('清除前'); db.records = {}; touch(); render(); toast('已清除');
+    const n = allRecords().length, mn = Object.keys(db.meds).length;
+    if (!n && !mn) return toast('目前沒有資料');
+    if (await confirmBox('清除所有資料？', '<p>將刪除這部裝置上全部 <b>' + n + '</b> 筆記錄' + (mn ? '和 <b>' + mn + '</b> 個取藥日期' : '') + '，無法直接復原（清除前會留一份，可在設定內還原）。<br>建議先匯出備份。</p>', '全部清除', true)) {
+      snapshotPrev('清除前'); db.records = {}; db.meds = {}; touch(); render(); toast('已清除');
     }
   }
 });
