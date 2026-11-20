@@ -145,8 +145,11 @@ hr.sp{border:0;border-top:1px solid var(--line);margin:14px 0}
 .evbtns .btn.on{background:var(--c3);border-color:var(--c3);color:#F2FBF5}
 .mhead{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;font-weight:800;color:var(--c3);background:var(--c2);border-radius:14px;padding:12px 14px;margin:12px 0 6px;font-size:15px}
 .mhead .mmeta{font-size:12px;font-weight:700;color:#1f3322;display:flex;align-items:center;gap:8px;white-space:nowrap}
-.mhead .chv{font-style:normal;font-size:16px;transition:transform .2s;transform:rotate(-90deg)}
-.mhead .chv.open{transform:none}
+.chv{font-style:normal;font-size:16px;transition:transform .2s;transform:rotate(-90deg)}
+.chv.open{transform:none}
+.acch{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;font-weight:800;color:var(--c3);font-size:16px;letter-spacing:.06em;padding:4px 0;min-height:36px}
+.acch .chv{font-size:18px}
+.accb{padding-top:12px}
 .card .mhead{margin:8px 0 2px;background:var(--c1)}
 .rhead,.rrow{display:grid;grid-template-columns:58px 1fr 1fr 1fr;gap:6px;align-items:center}
 .rhead{font-size:12px;font-weight:700;color:var(--c3);text-align:center;margin-bottom:2px}
@@ -272,7 +275,7 @@ function groupBy(mode) {
 function recordsIn(mode, key) { return allRecords().filter(r => periodKey(mode, r.date) === key); }
 
 /* ---------- UI 狀態 ---------- */
-const ui = { tab: 'today', date: todayStr(), mode: 'day', open: {}, histEv: false };
+const ui = { tab: 'today', date: todayStr(), mode: 'day', open: {}, histEv: false, setOpen: {} };
 const main = $('#main');
 
 function toast(msg, ms) {
@@ -778,6 +781,11 @@ function viewSettings() {
       (deferredInstall ? '<button class="btn pri block" data-act="install">安裝 App</button>' : '') +
       '<p class="help" style="margin-top:' + (deferredInstall ? '8' : '0') + 'px">' + (ios ? 'iPhone：用 Safari 開啟本頁 → 按底部「分享」圖示 → 選「加入主畫面」。' : 'Android：用 Chrome 開啟 → 右上角「⋮」→「安裝應用程式」。iPhone：用 Safari →「分享」→「加入主畫面」。') + '</p>') + '</section>';
   html += '<section class="card"><h2>危險區域</h2><button class="btn danger block" data-act="clear">清除這部裝置的所有資料</button><p class="help">不會影響 Google Drive 上已有的備份。</p></section>';
+  { let n = 0; // 每個設定區塊做成可展開／收起的卡片（預設收起）
+    html = html.replace(/<section class="card"><h2>([^<]+)<\/h2>([\s\S]*?)<\/section>/g, (m, t, body) => {
+      const key = 's' + (n++), open = !!ui.setOpen[key];
+      return '<section class="card acc"><button class="acch" data-act="toggleSet" data-key="' + key + '" aria-expanded="' + open + '"><span>' + t + '</span><i class="chv' + (open ? ' open' : '') + '">▾</i></button><div class="accb' + (open ? '' : ' hidden') + '">' + body + '</div></section>';
+    }); }
   html += '<p class="muted" style="text-align:center;margin:6px 0 0">血壓記錄 v1.0 · 分類（正常 &lt;130/85、偏高 ≥140/90）僅供參考，不能代替醫生診斷。</p>';
   main.innerHTML = html;
   $('#sUrl').addEventListener('change', e => { const u = e.target.value.trim(); if (u !== sync.url) { sync.url = u; sync.lastSyncedAt = null; } saveSync(); setStatus(baseStatus()); });
@@ -798,6 +806,10 @@ document.addEventListener('click', async e => {
   else if (a === 'nextDay') { if (ui.date < todayStr()) { ui.date = addDays(ui.date, 1); render(); } }
   else if (a === 'goToday') { ui.date = todayStr(); render(); }
   else if (a === 'edit') openEntry(b.dataset.date, b.dataset.slot);
+  else if (a === 'toggleSet') {
+    commitSyncInputs(); const open = b.getAttribute('aria-expanded') !== 'true', body = b.nextElementSibling;
+    ui.setOpen[b.dataset.key] = open; b.setAttribute('aria-expanded', open); body.classList.toggle('hidden', !open); b.querySelector('.chv').classList.toggle('open', open);
+  }
   else if (a === 'toggleEv') { ui.histEv = !ui.histEv; render(); main.scrollTop = 0; }
   else if (a === 'editEvt') openEvent(b.dataset.kind, b.dataset.date);
   else if (a === 'toggleMonth') { ui.open[b.dataset.key] = b.getAttribute('aria-expanded') !== 'true'; keepScroll(render); }
