@@ -140,8 +140,9 @@ hr.sp{border:0;border-top:1px solid var(--line);margin:14px 0}
 .medtag{display:inline-block;background:var(--c2);color:#17301c;font-size:11px;font-weight:700;padding:1px 8px;border-radius:99px;margin-right:6px;white-space:nowrap}
 .medline{margin-top:3px}
 .medtag.chk{background:var(--lo-bg);color:var(--lo-fg)}
-.evbtns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px}
-.evbtns .btn{min-height:40px;padding:8px 6px;font-size:14px}
+.evbtns{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:6px}
+.evbtns .btn{min-height:40px;padding:8px 4px;font-size:14px;white-space:nowrap}
+.evbtns .btn.on{background:var(--c3);border-color:var(--c3);color:#F2FBF5}
 .mhead{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;font-weight:800;color:var(--c3);background:var(--c2);border-radius:14px;padding:12px 14px;margin:12px 0 6px;font-size:15px}
 .mhead .mmeta{font-size:12px;font-weight:700;color:#1f3322;display:flex;align-items:center;gap:8px;white-space:nowrap}
 .mhead .chv{font-style:normal;font-size:16px;transition:transform .2s;transform:rotate(-90deg)}
@@ -271,7 +272,7 @@ function groupBy(mode) {
 function recordsIn(mode, key) { return allRecords().filter(r => periodKey(mode, r.date) === key); }
 
 /* ---------- UI 狀態 ---------- */
-const ui = { tab: 'today', date: todayStr(), mode: 'day', open: {} };
+const ui = { tab: 'today', date: todayStr(), mode: 'day', open: {}, histEv: false };
 const main = $('#main');
 
 function toast(msg, ms) {
@@ -383,7 +384,7 @@ function viewStats() {
   const tile = (k, s, sub) => '<div class="tile"><div class="k">' + k + '</div><div class="n">' + (s.n ? s.sys + '/' + s.dia : '—') + '</div><div class="s">' + (s.n ? '心跳 ' + (s.pulse == null ? '—' : s.pulse) + ' · ' + s.n + ' 個時段' : '暫時沒有記錄') + '</div></div>';
   const lim = mode === 'day' ? 9999 : mode === 'week' ? 26 : 24, chartN = mode === 'day' ? 14 : 12;
   const shown = groups.slice(-lim), chartPts = groups.filter(g => g.n > 0).slice(-chartN).map(g => Object.assign({ lab: periodShort(mode, g.key) }, g));
-  let html = '<div class="tiles" id="tiles">' + tile('本週平均', wSum) + '<div class="tile"><div class="k">本月取藥</div><div class="n">' + (medDatesIn(mo).length ? medDatesIn(mo).length + ' 次' : '—') + '</div><div class="s">' + (medDatesIn(mo).length ? medDatesIn(mo).map(medMD).join('、') : '本月未有記錄') + '</div></div>' + '</div>';
+  let html = '<div class="tiles" id="tiles">' + tile('本週平均', wSum) + (t => t.slice(0, -6) + '<div class="s"><span class="medtag">取藥</span>' + (medDatesIn(mo).length ? medDatesIn(mo).map(medMD).join('、') : '未有記錄') + '</div></div>')(tile('本月平均', mSum)) + '</div>';
   html += '<div class="seg" id="modeSeg" style="margin-bottom:12px">' + [['day', '每日'], ['week', '每週'], ['month', '每月']].map(a => '<button data-act="mode" data-mode="' + a[0] + '" aria-pressed="' + (mode === a[0]) + '">' + a[1] + '</button>').join('') + '</div>';
   html += '<section class="card"><h2>走勢（' + (mode === 'day' ? '每日' : mode === 'week' ? '每週' : '每月') + '平均）</h2>' + chartSVG(chartPts) + '</section>';
   html += '<section class="card"><h2>' + (mode === 'day' ? '每日' : mode === 'week' ? '每週（週一至週日）' : '每月') + '平均值</h2>';
@@ -409,7 +410,24 @@ function viewStats() {
 function viewHistory() {
   const recs = allRecords(), medN = Object.keys(db.meds).length, chkN = Object.keys(db.checks).length;
   setHeader('紀錄', recs.length + ' 筆記錄' + (medN ? '・' + medN + ' 次取藥' : '') + (chkN ? '・' + chkN + ' 次驗身' : ''));
-  const top = '<div class="evbtns"><button class="btn ghost" data-act="addEvt" data-kind="meds">＋ 取藥日期</button><button class="btn ghost" data-act="addEvt" data-kind="checks">＋ 驗身記錄</button></div>';
+  const top = '<div class="evbtns"><button class="btn ghost" data-act="addEvt" data-kind="meds">＋ 取藥日期</button><button class="btn ghost" data-act="addEvt" data-kind="checks">＋ 驗身記錄</button><button class="btn ghost' + (ui.histEv ? ' on' : '') + '" data-act="toggleEv" aria-pressed="' + ui.histEv + '">取藥/驗身</button></div>';
+  if (ui.histEv) {
+    setHeader('取藥/驗身', medN + ' 次取藥・' + chkN + ' 次驗身');
+    const evs = Object.values(db.meds).map(m => ({ k: 'meds', d: m.date, note: m.note })).concat(Object.values(db.checks).map(m => ({ k: 'checks', d: m.date, note: m.note })))
+      .sort((a, b) => a.d < b.d ? 1 : a.d > b.d ? -1 : (a.k === 'meds' ? -1 : 1));
+    if (!evs.length) { main.innerHTML = top + '<div class="empty">還沒有取藥日期或驗身記錄。</div>'; return; }
+    const ms = []; evs.forEach(e => { const k = e.d.slice(0, 7); if (!ms.length || ms[ms.length - 1].k !== k) ms.push({ k: k, items: [] }); ms[ms.length - 1].items.push(e); });
+    let h = top + '<div id="hist">';
+    ms.forEach((M, i) => {
+      const key = 'e:' + M.k, open = isOpen(key, i);
+      h += mhead(key, M.k, open, M.items.filter(e => e.k === 'meds').length + ' 次取藥・' + M.items.filter(e => e.k === 'checks').length + ' 次驗身');
+      if (open) M.items.forEach(e => {
+        const m = e.k === 'meds';
+        h += '<button class="hrow ' + (m ? 'medrow' : 'chkrow') + '" data-act="editEvt" data-kind="' + e.k + '" data-date="' + e.d + '"><span class="sl">' + (m ? '取藥' : '驗身') + '</span><span class="bp" style="font-size:15px;color:var(--c3)">' + esc(fmtLong(e.d)) + '</span><span class="medtag' + (m ? '' : ' chk') + '" style="margin:0">' + (m ? '藥' : '驗') + '</span>' + (e.note ? '<span class="nt">' + esc(e.note) + '</span>' : '') + '</button>';
+      });
+    });
+    main.innerHTML = h + '</div>'; return;
+  }
   if (!recs.length && !medN && !chkN) { main.innerHTML = top + '<div class="empty">還沒有任何記錄。</div>'; return; }
   const byDate = {}; recs.forEach(r => (byDate[r.date] = byDate[r.date] || []).push(r));
   const dates = Array.from(new Set(Object.keys(byDate).concat(Object.keys(db.meds), Object.keys(db.checks)))).sort().reverse();
@@ -780,6 +798,7 @@ document.addEventListener('click', async e => {
   else if (a === 'nextDay') { if (ui.date < todayStr()) { ui.date = addDays(ui.date, 1); render(); } }
   else if (a === 'goToday') { ui.date = todayStr(); render(); }
   else if (a === 'edit') openEntry(b.dataset.date, b.dataset.slot);
+  else if (a === 'toggleEv') { ui.histEv = !ui.histEv; render(); main.scrollTop = 0; }
   else if (a === 'editEvt') openEvent(b.dataset.kind, b.dataset.date);
   else if (a === 'toggleMonth') { ui.open[b.dataset.key] = b.getAttribute('aria-expanded') !== 'true'; keepScroll(render); }
   else if (a === 'addEvt') openEvent(b.dataset.kind, todayStr(), true);
